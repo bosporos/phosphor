@@ -1,0 +1,39 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_LANG_SIGNING
+#define __VNZ_LANG_SIGNING
+
+#include <Venice/Num/NativeIntegers>
+
+namespace Venice {
+
+    template <class T>
+    struct DequalifyUnsigned
+    {
+        // For already-signed integers
+        typedef T Type;
+    };
+
+#define _Venice_RIU(__UNSIGNED__, __SIGNED__) \
+    template <>                                \
+    struct DequalifyUnsigned<__UNSIGNED__>     \
+    {                                          \
+        typedef __SIGNED__ Type;               \
+    }
+
+    _Venice_RIU (_u8, _i8);
+    _Venice_RIU (_u16, _i16);
+    _Venice_RIU (_u32, _i32);
+    _Venice_RIU (_u64, _i64);
+    _Venice_RIU (_usize, _isize);
+    // _uptr == _usize, _iptr = _isize, so not necessary
+
+#undef _Venice_RIU
+}
+
+#endif /* !@__VNZ_LANG_SIGNING */

@@ -1,0 +1,269 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_MATH_INTEGERS
+#define __VNZ_MATH_INTEGERS
+
+#include <Venice/Compiler>
+
+#if COMPILER_SUPPORTS(SIZED_INT_MACROS)
+namespace vnz::math {
+    typedef __UINT8_TYPE__ _u8;
+    typedef __UINT16_TYPE__ _u16;
+    typedef __UINT32_TYPE__ _u32;
+    typedef __UINT64_TYPE__ _u64;
+    typedef __UINTPTR_TYPE__ _uptr;
+    typedef __UINTPTR_TYPE__ _usize;
+
+    typedef __INT8_TYPE__ _i8;
+    typedef __INT16_TYPE__ _i16;
+    typedef __INT32_TYPE__ _i32;
+    typedef __INT64_TYPE__ _i64;
+    typedef __INTPTR_TYPE__ _iptr;
+    typedef __INTPTR_TYPE__ _isize;
+}
+#endif /* COMPILER+SIZED_INT_MACROS */
+
+namespace vnz {
+    template <class T>
+    concept Sized = requires(T a)
+    {
+        sizeof (T);
+    };
+
+    template <class T>
+    struct _Unsigned
+    {
+        constexpr static bool __constraint = static_cast<T> (-1) > static_cast<T> (0);
+    };
+
+    template <class T>
+    concept Unsigned = _Unsigned<T>::__constraint;
+
+    template <class T>
+    struct _Signed
+    {
+        constexpr static bool __constraint = static_cast<T> (-1) < static_cast<T> (0);
+    };
+
+    template <class T>
+    concept Signed = _Signed<T>::__constraint;
+}
+
+namespace vnz::math {
+    template <class T>
+    struct Integer
+    {
+    };
+
+#define vnz_defintop_nm(op)                           \
+    SelfType operator op (SelfType const rhs) const   \
+    {                                                 \
+        return SelfType { this->inner op rhs.inner }; \
+    }
+#define vnz_defintop_m(op)                      \
+    SelfType & operator op (SelfType const rhs) \
+    {                                           \
+        this->inner op rhs.inner;               \
+        return *this;                           \
+    }
+#define vnz_defintop_nm_bt(op)                        \
+    SelfType operator op (Integer<T> const rhs) const \
+    {                                                 \
+        return SelfType { this->inner op rhs.inner }; \
+    }
+#define vnz_defintop_m_bt(op)                           \
+    SelfType & operator op (Integer<T> const rhs) const \
+    {                                                   \
+        this->inner op rhs.inner;                       \
+        return *this;                                   \
+    }
+
+    template <template <class T> class I, class T>
+    struct IntegerBase
+    {
+        typedef T UnderlyingType;
+        typedef I<T> SelfType;
+
+        static constexpr const _usize width = sizeof (T);
+
+        T inner;
+
+        ALWAYS_INLINE IntegerBase ()
+            : inner { 0 }
+        {}
+        ALWAYS_INLINE IntegerBase (T x)
+            : inner { x }
+        {}
+        ALWAYS_INLINE IntegerBase (I<T> const & x)
+            : inner { x.inner }
+        {}
+
+        ALWAYS_INLINE operator UnderlyingType () const
+        {
+            return static_cast<UnderlyingType> (this->inner);
+        }
+
+        template <class U>
+        ALWAYS_INLINE Integer<U> into ()
+        {
+            return Integer<U> { static_cast<U> (this->inner) };
+        }
+
+        SelfType & operator= (I<T> x)
+        {
+            this->inner = x.inner;
+            return *this;
+        }
+        SelfType & operator= (T x)
+        {
+            this->inner = x;
+            return *this;
+        }
+
+        SelfType & operator++ ()
+        {
+            ++this->inner;
+            return *this;
+        }
+        SelfType & operator-- ()
+        {
+            --this->inner;
+            return *this;
+        }
+
+        SelfType operator++ (int)
+        {
+            this->inner++;
+            return SelfType (this->inner - 1);
+        }
+        SelfType operator-- (int)
+        {
+            this->inner--;
+            return SelfType (this->inner + 1);
+        }
+        ALWAYS_INLINE bool operator! () const
+        {
+            return !this->inner;
+        }
+
+        ALWAYS_INLINE explicit operator bool () const
+        {
+            return static_cast<bool> (this->inner);
+        }
+
+        ALWAYS_INLINE vnz_defintop_nm (+);
+        ALWAYS_INLINE vnz_defintop_nm (-);
+        ALWAYS_INLINE vnz_defintop_nm (*);
+        ALWAYS_INLINE vnz_defintop_nm (/);
+        ALWAYS_INLINE vnz_defintop_nm (%);
+        ALWAYS_INLINE vnz_defintop_nm (|);
+        ALWAYS_INLINE vnz_defintop_nm (^);
+        ALWAYS_INLINE vnz_defintop_nm (&);
+
+        ALWAYS_INLINE vnz_defintop_m (+=);
+        ALWAYS_INLINE vnz_defintop_m (-=);
+        ALWAYS_INLINE vnz_defintop_m (*=);
+        ALWAYS_INLINE vnz_defintop_m (/=);
+        ALWAYS_INLINE vnz_defintop_m (%=);
+        ALWAYS_INLINE vnz_defintop_m (|=);
+        ALWAYS_INLINE vnz_defintop_m (^=);
+        ALWAYS_INLINE vnz_defintop_m (&=);
+
+        ALWAYS_INLINE vnz_defintop_nm_bt (<<);
+        ALWAYS_INLINE vnz_defintop_nm_bt (>>);
+        ALWAYS_INLINE vnz_defintop_m_bt (>>=);
+        ALWAYS_INLINE vnz_defintop_m_bt (<<=);
+
+        ALWAYS_INLINE SelfType operator+ ()
+        {
+            return SelfType { this->inner };
+        }
+        ALWAYS_INLINE SelfType operator- ()
+        {
+            return SelfType { -this->inner };
+        }
+        ALWAYS_INLINE SelfType operator~ ()
+        {
+            return SelfType { ~this->inner };
+        }
+    };
+
+    template <vnz::Unsigned T>
+    struct Integer<T> : public IntegerBase<Integer, T>
+    {
+        typedef T UnderlyingType;
+        typedef Integer<T> SelfType;
+
+        static constexpr const _usize width = sizeof (T);
+
+        ALWAYS_INLINE constexpr const SelfType max_value () const
+        {
+            return { ~static_cast<UnderlyingType> (0) };
+        }
+        ALWAYS_INLINE constexpr const SelfType min_value () const
+        {
+            return { static_cast<UnderlyingType> (0) };
+        }
+    };
+
+    template <vnz::Signed T>
+    struct Integer<T> : public IntegerBase<Integer, T>
+    {
+        typedef T UnderlyingType;
+        typedef Integer<T> SelfType;
+
+        static constexpr const _usize width = sizeof (T);
+
+        ALWAYS_INLINE constexpr const SelfType max_value () const
+        {
+            return {
+                ~(static_cast<UnderlyingType> (1) << (SelfType::width - 1))
+            };
+        }
+        ALWAYS_INLINE constexpr const SelfType min_value () const
+        {
+            // Gotta base min on max b/c |min| = |max| + 1 because 2's complement means that you get a range of 2^N values; leave room for the 0, and you get 2^N-1, so one of your endpoints is going to have an absolute value 1 greater than the other
+            // Easier to do this on the min_value because the max is smaller than the min so overflowing isn't a problem
+            return { -SelfType::max_value () - 1 };
+        }
+    };
+}
+
+namespace vnz {
+    using u8    = math::Integer<math::_u8>;
+    using u16   = math::Integer<math::_u16>;
+    using u32   = math::Integer<math::_u32>;
+    using u64   = math::Integer<math::_u64>;
+    using usize = math::Integer<math::_usize>;
+    using uptr  = math::Integer<math::_uptr>;
+
+    using i8    = math::Integer<math::_i8>;
+    using i16   = math::Integer<math::_i16>;
+    using i32   = math::Integer<math::_i32>;
+    using i64   = math::Integer<math::_i64>;
+    using isize = math::Integer<math::_isize>;
+    using iptr  = math::Integer<math::_iptr>;
+}
+
+#define vnz_declintop_lit(type, bang) vnz::type operator"" bang (unsigned long long i);
+
+vnz_declintop_lit (u8, u8);
+vnz_declintop_lit (u16, u16);
+vnz_declintop_lit (u32, u32);
+vnz_declintop_lit (u64, u64);
+vnz_declintop_lit (uptr, uptr);
+vnz_declintop_lit (usize, uz);
+
+vnz_declintop_lit (i8, i8);
+vnz_declintop_lit (i16, i16);
+vnz_declintop_lit (i32, i32);
+vnz_declintop_lit (i64, i64);
+vnz_declintop_lit (iptr, iptr);
+vnz_declintop_lit (isize, iz);
+
+#endif /* !@__VNZ_MATH_INTEGERS */

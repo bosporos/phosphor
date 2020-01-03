@@ -1,0 +1,5 @@
+-Wno-format-extra-args
+-Wno-deprecated-declarations
+
+-std=c++2a
+-Wno-literal-suffix

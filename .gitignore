@@ -1,0 +1,5 @@
+build
+# for convenience, build/compile_commands.json is usually symlinked to the root directory for the benefit of the IDE
+compile_commands.json
+# custom development shortcut files
+mmc-*

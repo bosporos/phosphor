@@ -1,0 +1,13 @@
+-fbuiltin
+-finline-functions
+
+-fno-rtti
+-fvisibility=default
+
+
+-Wno-expansion-to-defined
+-Wno-unused-parameter
+-Wno-unused-variable
+-fdollars-in-identifiers
+
+-Wno-ignored-attributes

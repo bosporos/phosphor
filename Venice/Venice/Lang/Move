@@ -1,0 +1,30 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_LANG_MOVE
+#define __VNZ_LANG_MOVE
+
+#include <Venice/Compiler>
+#include <Venice/Lang/Dequalify>
+#include <Venice/Lang/Traits>
+
+namespace Venice {
+    template <typename T>
+    ALWAYS_INLINE constexpr typename vnz::RemoveReference<T>::Type && Move (T && value)
+    {
+        static_assert (vnz::IsLValueReference<T>::Value, "T is not an lvalue reference; move is not necessary");
+
+        using Dequalified = typename vnz::RemoveReference<T>::Type;
+        static_assert (!vnz::IsConst<Dequalified>::Value, "T is const qualified");
+
+        return static_cast<typename RemoveReference<T>::Type &&> (value);
+    }
+}
+
+// #define move(x) vnz::Move (x)
+
+#endif

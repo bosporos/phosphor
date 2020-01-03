@@ -1,0 +1,178 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_ALLOC
+#define __VNZ_ALLOC
+
+#include <Venice/Compiler>
+#include <Venice/Math/Integers>
+#include <Venice/Atomic/Atomic>
+#include <Venice/sys/pthread-base/thread/ID>
+#include <Venice/sys/pthread-base/sync/Mutex>
+#include <Venice/sys/pthread-base/sync/RwLock>
+
+namespace vnz::alloc {
+    struct Superblock
+    {
+        void * range_begin;
+        void * freeptr_local;
+        void * freeptr_global;
+
+        atomic::Atomic<math::_u16> free_blocks;
+        math::_u16 block_size;
+        math::_u16 block_capacity;
+        math::_u8 __padding0[2];
+
+        vnz::sys::thread::ID thread_id;
+        vnz::sys::sync::Mutex freeptr_global_mutex;
+
+        // pointer to the chain so deallocate can shift free superblocks
+        void * chain;
+
+        Superblock ();
+        ~Superblock ();
+
+        void set (void * memory);
+        void format (math::_u64 block_size);
+
+        void * allocate ();
+        void deallocate (void *);
+    };
+
+    struct Chunk
+    {
+        void * range_begin;
+        Superblock superblocks[64];
+        math::_u64 used_blocks;
+
+        Chunk * left;
+        Chunk * right;
+
+        Chunk ();
+        ~Chunk ();
+    };
+
+    struct ChunkChain
+    {
+        Chunk * head;
+        atomic::Atomic<math::_usize> length;
+
+        sys::sync::RwLock lock;
+
+        ChunkChain ();
+        ~ChunkChain ();
+
+        Chunk * find_chunk (void * addr);
+        void add_chunk (Chunk * chunk);
+        void remove_chunk (Chunk * chunk);
+    };
+
+    struct ChunkTable
+    {
+        ChunkChain * chains;
+        const math::_usize entries;
+        atomic::Atomic<math::_usize> chunks;
+        void (*deallocation_procedure) (void *);
+
+        ChunkTable (math::_usize);
+        ChunkTable (math::_usize, void *, void (*) (void *));
+        ~ChunkTable ();
+
+        ALWAYS_INLINE math::_usize index_hash (void * addr)
+        {
+            return reinterpret_cast<math::_usize> (addr) >> 20 % this->entries;
+        }
+
+        void add_chunk (Chunk *);
+        void remove_chunk (Chunk *);
+
+        ALWAYS_INLINE Chunk * find_chunk (void * addr)
+        {
+            return this->chains[this->index_hash (addr)].find_chunk (addr);
+        }
+    };
+
+    struct SuperblockChainNode
+    {
+        atomic::Atomic<Superblock *> inner;
+        atomic::Atomic<SuperblockChainNode *> left;
+        atomic::Atomic<SuperblockChainNode *> right;
+
+        SuperblockChainNode (Superblock *);
+        ~SuperblockChainNode ();
+    };
+
+    struct Metric
+    {
+    };
+
+// In wkalloc, I had an additional placemnt LXSH
+// I don't actually know what LXSH means... local sized X?? heap
+// Apparently it's not actually a reclamation heap, which is weird
+#define __VNZA_SHADOW_PLACEMENT_LSRH 0
+#define __VNZA_SHADOW_PLACEMENT_LURH 1
+#define __VNZA_SHADOW_PLACEMENT_GSRH 2
+#define __VNZA_SHADOW_PLACEMENT_GURH 3
+
+    struct Heap;
+
+    struct LocalChain
+    {
+        SuperblockChainNode * head;
+        atomic::Atomic<math::_usize> num_nodes;
+        atomic::Atomic<math::_usize> num_superblocks;
+
+        atomic::Atomic<math::_usize> left_length;
+        atomic::Atomic<math::_usize> right_length;
+
+        const math::_u16 block_size;
+        struct
+        {
+            math::_u8 placement : 3;
+            math::_u8 padding : 5;
+        } __shadow;
+        math::_u8 __padding0[5];
+
+        sys::sync::Mutex chain_lock;
+
+        LocalChain (math::_u16 block_size);
+        ~LocalChain ();
+
+        // Undefined behaviour occurs when a superblock already in a chain is added to the chain using add_as_head() or reserve()
+
+        // add_as_head to be called in the case that a superblock runs out of blocks, and the allocator requests a new one
+        Superblock * add_as_head (Superblock * sb);
+        Superblock * reserve (Superblock * sb);
+        // called by chain_alloc() when the HEAD is filled
+        // will shift in the SB to the right of HEAD, or will allocate a new one using add_as_head, using the `parent` heap
+        // returns nullptr on failure
+        Superblock * request_head_change (Heap * parent);
+        // Called by downstream Superblock::deallocate (caller: any thread)
+        // when the superblock needs to be moved out of the left shoulder and moved into the right shoulder
+        void reorder (Superblock * sb);
+
+        void * chain_alloc ();
+    };
+
+    struct Heap
+    {
+        ChunkTable * chunk_table;
+        // (1), 2, 3, 4,
+        // 6, 8, 12, 16,
+        // 24, 32, 48, 64,
+        // 96, 128, 192, 256,
+        // 384, 512, 768, 1024
+        // Sized chains only:
+        LocalChain chains[20];
+        Heap * parent;
+
+        // The returned value will be a) an appropriately sized superblock, or b) a nullptr
+        Superblock * request_sized (usize size);
+    };
+}
+
+#endif /* !@__VNZ_ALLOC */

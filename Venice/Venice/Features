@@ -1,0 +1,49 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_FEATURES
+#define __VNZ_FEATURES
+
+#include <Venice/Platform>
+
+// Sirocco OS follows Meltem spec w/ Sienna Kernel
+
+// SPECIFICATIONS
+
+#define VNZ_OS_POSIX 1
+#define VNZ_OS_UNIX 1
+#define VNZ_OS_MELTEM 0
+
+// OS
+
+#define VNZ_OS_LINUX 0
+#define VNZ_OS_OPENBSD 0
+#define VNZ_OS_FREEBSD 0
+#define VNZ_OS_DRAGONFLY_BSD 0
+#define VNZ_OS_SIROCCO 0
+#define VNZ_OS_MACOS 1
+#define VNZ_OS_UBUNTU
+
+// FAMILY
+
+#define VNZ_OS_FAMILY_BSD 1
+#define VNZ_OS_FAMILY_DARWIN 1
+#define VNZ_OS_FAMILY_DEBIAN 0
+#define VNZ_OS_FAMILY_AEOLIAN 0
+
+// KERNEL
+
+#define VNZ_OS_MACH_KERNEL 1
+#define VNZ_OS_BSD_KERNEL 0
+#define VNZ_OS_LINUX_KERNEL 0
+#define VNZ_OS_SIENNA_KERNEL 0
+
+// MISCELLANY
+
+#define VNZ_OS_HAS_PTHREADS 1
+
+#endif /* !@__VNZ_FEATURES */

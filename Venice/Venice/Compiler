@@ -1,0 +1,142 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_COMPILER
+#define __VNZ_COMPILER
+
+#define COMPILER(VNZ_FEATURE) (defined VNZ_COMPILER_##VNZ_FEATURE && VNZ_COMPILER_##VNZ_FEATURE)
+#define COMPILER_SUPPORTS(VNZ_FEATURE) (defined VNZ_COMPILER_SUPPORTS_##VNZ_FEATURE && VNZ_COMPILER_SUPPORTS_##VNZ_FEATURE)
+
+// CLANG-SPECIFIC FEATURES
+// Note: GCC 10 seems to have __has_builtin
+//       __has_include and __has_attribute seem to already be present
+
+#ifdef __has_builtin
+#    define COMPILER_HAS_CLANG_BUILTIN(x) __has_builtin (x)
+#else /* @__has_builtin */
+#    define COMPILER_HAS_CLANG_BUILTIN(x) 0
+#endif /* @__has_feature || */
+
+#ifdef __has_feature
+#    define COMPILER_HAS_CLANG_FEATURE(x) __has_feature (x)
+#else /* @__has_feature */
+#    define COMPILER_HAS_CLANG_FEATURE(x) 0
+#endif /* @__has_feature || */
+
+#ifdef __has_extension
+#    define COMPILER_HAS_CLANG_EXTENSION(x) __has_extension (x)
+#else /* @__has_extension */
+#    define COMPILER_HAS_CLANG_EXTENSION(x) 0
+#endif /* @__has_extension || */
+
+#ifdef __has_attribute
+#    define COMPILER_HAS_CLANG_ATTRIBUTE(x) __has_attribute (x)
+#else /* @__has_attribute */
+#    define COMPILER_HAS_CLANG_ATTRIBUTE(x) 0
+#endif /* @__has_attribute || */
+
+#ifdef __has_include
+#    define COMPILER_HAS_INCLUDE_FILE(x) __has_include(x)
+#else /* @__has_include */
+#    define COMPILER_HAS_INCLUDE_FILE(x) 0
+#endif /* @__has_include || */
+
+// COMPILER DETECTION
+
+#if defined(__clang__)
+#    define VNZ_COMPILER_CLANG 1
+#    define VNZ_COMPILER_SUPPORTS_BLOCKS COMPILER_HAS_CLANG_FEATURE (blocks)
+#    define VNZ_COMPILER_SUPPORTS_STATIC_ASSERT COMPILER_HAS_CLANG_FEATURE (c_static_assert)
+#    define VNZ_COMPILER_GCC_OR_CLANG 1
+#endif /* @__clang__ */
+
+#if defined(__GNUC__)
+#    define VNZ_GCC_OR_CLANG 1
+#    if !defined(__clang__)
+#        define VNZ_COMPILER_GCC 1
+#    endif
+#    define VNZ_COMPILER_GNU_COMPATIBLE 1
+#endif /* @__GNUC__ */
+
+// SIZED INTEGER DETECTION
+
+#if defined(__UINT8_TYPE__) && defined(__INT8_TYPE__)      \
+    && defined(__UINT16_TYPE__) && defined(__INT16_TYPE__) \
+    && defined(__UINT32_TYPE__) && defined(__INT32_TYPE__) \
+    && defined(__UINT64_TYPE__) && defined(__INT64_TYPE__) \
+    && defined(__UINTPTR_TYPE__) && defined(__INTPTR_TYPE__)
+#    define VNZ_COMPILER_SUPPORTS_SIZED_INT_MACROS 1
+#else /* @__(U)INT.._TYPE__ */
+#    define VNZ_COMPILER_SUPPORTS_SIZED_INT_MACROS 0
+#endif /* @__(U)INT.._TYPE__ */
+
+// ATTRIBUTES
+
+#if !defined(ALWAYS_INLINE) && COMPILER(GCC_OR_CLANG)
+#    define ALWAYS_INLINE inline __attribute__ ((__always_inline__))
+#endif /* !@ALWAYS_INLINE & GCC_OR_CLANG */
+#if !defined(ALWAYS_INLINE)
+#    define ALWAYS_INLINE inline
+#endif /* !@ALWAYS_INLINE */
+
+#if !defined(NEVER_INLINE) && COMPILER(GCC_OR_CLANG)
+#    define NEVER_INLINE __attribute__ ((__noinline__))
+#endif /* !@NEVER_INLINE & GCC_OR_CLANG */
+#if !defined(NEVER_INLINE)
+#    define NEVER_INLINE
+#endif
+
+#if defined(WIN32) || defined(CYGWIN)
+#    define VNZ_API_FACADE __declspec((dllexport))
+#    define VNZ_API __declspec((dllexport))
+#    define VNZ_VEILED __declspec((dllexport))
+#    define VNZ_PRIVATE
+#else
+#    define VNZ_API_FACADE __attribute__ ((visibility ("default")))
+#    define VNZ_API __attribute__ ((visibility ("protected")))
+#    define VNZ_VEILED __attribute__ ((visibility ("internal")))
+#    define VNZ_PRIVATE __attribute__ ((visibility ("hidden")))
+#endif
+
+#if !defined(USED) && COMPILER(GCC_OR_CLANG)
+#    define USED __attribute__ ((__used__))
+#endif
+#if !defined(USED)
+#    define USED
+#endif
+#if !defined(UNUSED) && COMPILER(GCC_OR_CLANG)
+#    define UNUSED __attribute__ ((__unused__))
+#endif
+#if !defined(UNUSED)
+#    define UNUSED
+#endif
+
+#if !defined(UNLIKELY) && COMPILER(GCC_OR_CLANG)
+#    define UNLIKELY(x) __builtin_expect (!!(x), 0)
+#endif
+#if !defined(UNLIKELY)
+#    define UNLIKELY(x) x
+#endif
+
+#if !defined(LIKELY) && COMPILER(GCC_OR_CLANG)
+#    define LIKELY(x) __builtin_expect (!!(x), 1)
+#endif
+#if !defined(LIKELY)
+#    define LIKELY(x) x
+#endif
+
+#if !defined(NORETURN) && COMPILER(GCC_OR_CLANG)
+#    define NORETURN __attribute__ ((noreturn))
+#endif
+#if !defined(NORETURN)
+#    define NORETURN
+#endif
+
+#include <Venice/Lang/NonCopyable>
+#include <Venice/Lang/NonMoveable>
+
+#endif /* !@__VNZ_COMPILER */

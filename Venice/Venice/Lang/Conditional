@@ -1,0 +1,43 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_LANG_CONDITION
+#define __VNZ_LANG_CONDITION
+
+namespace Venice {
+    template <bool C, class T, class U>
+    struct Conditional
+    {};
+
+    template <class T, class U>
+    struct Conditional<1, T, U>
+    {
+        typedef T Type;
+    };
+
+    template <class T, class U>
+    struct Conditional<0, T, U>
+    {
+        typedef U Type;
+    };
+
+    template <bool C, class T>
+    struct If
+    {};
+
+    template <class T>
+    struct If<true, T>
+    {
+        typedef T Type;
+    };
+
+    template <class T>
+    struct If<false, T>
+    {};
+}
+
+#endif /* !@__VNZ_LANG_CONDITION */

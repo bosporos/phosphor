@@ -1,0 +1,242 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_ATOMIC
+#define __VNZ_ATOMIC
+
+#include <Venice/Compiler>
+#include <Venice/Math/Integers>
+#include <Venice/Lang/NonCopyable>
+#include <Venice/Lang/NonMoveable>
+
+#include <stdlib.h> /* abort */
+
+namespace vnz::atomic {
+
+    enum class Ordering : math::_u8 {
+#if defined(__ATOMIC_RELAXED)
+        Relaxed = __ATOMIC_RELAXED,
+        Consume = __ATOMIC_CONSUME,
+        Acquire = __ATOMIC_ACQUIRE,
+        Release = __ATOMIC_RELEASE,
+        AcqRel  = __ATOMIC_ACQ_REL,
+        SeqCst  = __ATOMIC_SEQ_CST,
+#else
+#    error "Venice requires the __ATOMIC_* macros & __atomic_* builtins"
+#endif
+    };
+
+    template <typename T>
+    struct Atomic
+    {
+        T inner;
+
+        Atomic ()
+        {
+            __atomic_store_n (&inner, static_cast<T> (0), __ATOMIC_RELEASE);
+        }
+
+        Atomic (T initial)
+        {
+            __atomic_store_n (&inner, initial, __ATOMIC_RELEASE);
+        }
+
+        VNZ_NO_COPY (Atomic);
+        VNZ_NO_MOVE (Atomic);
+        VNZ_NO_COPY_ASSIGN (Atomic);
+        VNZ_NO_MOVE_ASSIGN (Atomic);
+
+        ~Atomic ()
+        {}
+
+        void store (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: __atomic_store_n (&inner, value, __ATOMIC_RELAXED); break;
+                case Ordering::Release: __atomic_store_n (&inner, value, __ATOMIC_RELEASE); break;
+                case Ordering::SeqCst: __atomic_store_n (&inner, value, __ATOMIC_SEQ_CST); break;
+                default:
+                    // tg-panic! invalid ordering on atomic store
+                    abort ();
+            }
+        }
+
+        T load (const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_load_n (&inner, __ATOMIC_RELAXED);
+                case Ordering::Acquire: return __atomic_load_n (&inner, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_load_n (&inner, __ATOMIC_CONSUME);
+                case Ordering::SeqCst: return __atomic_load_n (&inner, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic load
+                    abort ();
+            }
+        }
+
+        T swap (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_exchange_n (&inner, value, __ATOMIC_RELAXED);
+                case Ordering::Release: return __atomic_exchange_n (&inner, value, __ATOMIC_RELEASE);
+                case Ordering::Acquire: return __atomic_exchange_n (&inner, value, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_exchange_n (&inner, value, __ATOMIC_CONSUME);
+                case Ordering::AcqRel: return __atomic_exchange_n (&inner, value, __ATOMIC_ACQ_REL);
+                case Ordering::SeqCst: return __atomic_exchange_n (&inner, value, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic swap
+                    abort ();
+            }
+        }
+
+        bool compare_and_swap (T expect, T desire, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Release: return this->compare_exchange (expect, desire, order, Ordering::Relaxed);
+                case Ordering::Consume: return this->compare_exchange (expect, desire, order, Ordering::Relaxed);
+                case Ordering::Relaxed: return this->compare_exchange (expect, desire, order, Ordering::Relaxed);
+                case Ordering::SeqCst: return this->compare_exchange (expect, desire, order, Ordering::SeqCst);
+                case Ordering::Acquire: return this->compare_exchange (expect, desire, order, Ordering::Acquire);
+                case Ordering::AcqRel: return this->compare_exchange (expect, desire, order, Ordering::Acquire);
+            }
+        }
+
+        bool compare_exchange (
+            T expect,
+            T desire,
+            Ordering success,
+            Ordering failure)
+        {
+#define vnz_atomic_helper(a, b) return __atomic_compare_exchange_n (&inner, &expect, desire, 0, a, b);
+            // failure <= success !
+            // relaxed, con, acq, rel, acqrel, seqcst
+            if (failure == Ordering::Relaxed) {
+                switch (success) {
+                    case Ordering::Relaxed: vnz_atomic_helper (__ATOMIC_RELAXED, __ATOMIC_RELAXED) case Ordering::Consume : vnz_atomic_helper (__ATOMIC_CONSUME, __ATOMIC_RELAXED) case Ordering::Acquire : vnz_atomic_helper (__ATOMIC_ACQUIRE, __ATOMIC_RELAXED) case Ordering::Release : vnz_atomic_helper (__ATOMIC_RELEASE, __ATOMIC_RELAXED) case Ordering::AcqRel : vnz_atomic_helper (__ATOMIC_ACQ_REL, __ATOMIC_RELAXED) case Ordering::SeqCst : vnz_atomic_helper (__ATOMIC_SEQ_CST, __ATOMIC_RELAXED) default :
+                        // tg-panic! invalid memory ordering
+                        abort ();
+                }
+            } else if (failure == Ordering::Acquire) {
+                switch (success) {
+                    case Ordering::Acquire: vnz_atomic_helper (__ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE) case Ordering::Release : vnz_atomic_helper (__ATOMIC_RELEASE, __ATOMIC_ACQUIRE) case Ordering::AcqRel : vnz_atomic_helper (__ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE) case Ordering::SeqCst : vnz_atomic_helper (__ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE) default :
+                        // tg-panic! invalid memory ordering
+                        abort ();
+                }
+            } else {
+                // tg-panic! invalid memory ordering
+                abort ();
+            }
+#undef vnz_atomic_helper
+        }
+
+        bool compare_exchange_weak (
+            T expect,
+            T desire,
+            Ordering success,
+            Ordering failure)
+        {
+#define vnz_atomic_helper(a, b) \
+    return __atomic_compare_exchange_n (&inner, &expect, desire, 1, a, b);
+            // failure <= success !
+            // relaxed, con, acq, rel, acqrel, seqcst
+            if (failure == Ordering::Relaxed) {
+                switch (success) {
+                    case Ordering::Relaxed: vnz_atomic_helper (__ATOMIC_RELAXED, __ATOMIC_RELAXED) case Ordering::Consume : vnz_atomic_helper (__ATOMIC_CONSUME, __ATOMIC_RELAXED) case Ordering::Acquire : vnz_atomic_helper (__ATOMIC_ACQUIRE, __ATOMIC_RELAXED) case Ordering::Release : vnz_atomic_helper (__ATOMIC_RELEASE, __ATOMIC_RELAXED) case Ordering::AcqRel : vnz_atomic_helper (__ATOMIC_ACQ_REL, __ATOMIC_RELAXED) case Ordering::SeqCst : vnz_atomic_helper (__ATOMIC_SEQ_CST, __ATOMIC_RELAXED) default :
+                        // tg-panic! invalid memory ordering
+                        abort ();
+                }
+            } else if (failure == Ordering::Acquire) {
+                switch (success) {
+                    case Ordering::Acquire: vnz_atomic_helper (__ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE) case Ordering::Release : vnz_atomic_helper (__ATOMIC_RELEASE, __ATOMIC_ACQUIRE) case Ordering::AcqRel : vnz_atomic_helper (__ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE) case Ordering::SeqCst : vnz_atomic_helper (__ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE) default :
+                        // tg-panic! invalid memory ordering
+                        abort ();
+                }
+            } else {
+                // tg-panic! invalid memory ordering
+                abort ();
+            }
+#undef vnz_atomic_helper
+        }
+
+        T fetch_add (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_fetch_add (&inner, value, __ATOMIC_RELAXED);
+                case Ordering::Release: return __atomic_fetch_add (&inner, value, __ATOMIC_RELEASE);
+                case Ordering::Acquire: return __atomic_fetch_add (&inner, value, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_fetch_add (&inner, value, __ATOMIC_CONSUME);
+                case Ordering::AcqRel: return __atomic_fetch_add (&inner, value, __ATOMIC_ACQ_REL);
+                case Ordering::SeqCst: return __atomic_fetch_add (&inner, value, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic add
+                    abort ();
+            }
+        }
+
+        T fetch_sub (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_fetch_sub (&inner, value, __ATOMIC_RELAXED);
+                case Ordering::Release: return __atomic_fetch_sub (&inner, value, __ATOMIC_RELEASE);
+                case Ordering::Acquire: return __atomic_fetch_sub (&inner, value, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_fetch_sub (&inner, value, __ATOMIC_CONSUME);
+                case Ordering::AcqRel: return __atomic_fetch_sub (&inner, value, __ATOMIC_ACQ_REL);
+                case Ordering::SeqCst: return __atomic_fetch_sub (&inner, value, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic sub
+                    abort ();
+            }
+        }
+
+        T fetch_and (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_fetch_and (&inner, value, __ATOMIC_RELAXED);
+                case Ordering::Release: return __atomic_fetch_and (&inner, value, __ATOMIC_RELEASE);
+                case Ordering::Acquire: return __atomic_fetch_and (&inner, value, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_fetch_and (&inner, value, __ATOMIC_CONSUME);
+                case Ordering::AcqRel: return __atomic_fetch_and (&inner, value, __ATOMIC_ACQ_REL);
+                case Ordering::SeqCst: return __atomic_fetch_and (&inner, value, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic and
+                    abort ();
+            }
+        }
+
+        T fetch_or (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_fetch_or (&inner, value, __ATOMIC_RELAXED);
+                case Ordering::Release: return __atomic_fetch_or (&inner, value, __ATOMIC_RELEASE);
+                case Ordering::Acquire: return __atomic_fetch_or (&inner, value, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_fetch_or (&inner, value, __ATOMIC_CONSUME);
+                case Ordering::AcqRel: return __atomic_fetch_or (&inner, value, __ATOMIC_ACQ_REL);
+                case Ordering::SeqCst: return __atomic_fetch_or (&inner, value, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic or
+                    abort ();
+            }
+        }
+
+        T fetch_xor (T const value, const Ordering order = Ordering::Relaxed)
+        {
+            switch (order) {
+                case Ordering::Relaxed: return __atomic_fetch_xor (&inner, value, __ATOMIC_RELAXED);
+                case Ordering::Release: return __atomic_fetch_xor (&inner, value, __ATOMIC_RELEASE);
+                case Ordering::Acquire: return __atomic_fetch_xor (&inner, value, __ATOMIC_ACQUIRE);
+                case Ordering::Consume: return __atomic_fetch_xor (&inner, value, __ATOMIC_CONSUME);
+                case Ordering::AcqRel: return __atomic_fetch_xor (&inner, value, __ATOMIC_ACQ_REL);
+                case Ordering::SeqCst: return __atomic_fetch_xor (&inner, value, __ATOMIC_SEQ_CST);
+                default:
+                    // tg-panic! invalid ordering on atomic xor
+                    abort ();
+            }
+        }
+    };
+}
+
+#endif /* !@__VNZ_ATOMIC */

@@ -1,0 +1,32 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_THREAD_ID__PTHREADS
+#define __VNZ_THREAD_ID__PTHREADS
+
+#include <Venice/Math/Integers>
+
+namespace vnz::sys::thread {
+    struct ID
+    {
+        ::vnz::math::_u64 inner;
+
+        //! Binds to creating thread
+        ID ();
+        //! Thread binding does not change
+        ID (ID const &);
+        //! Binds to new thread
+        ID (ID &&);
+
+        void bind_to_current ();
+        bool is_current () const;
+
+        bool operator== (ID const & rhs) const;
+    };
+}
+
+#endif /* !@__VNZ_THREAD_ID__PTHREADS */

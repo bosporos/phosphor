@@ -1,0 +1,96 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_LANG_FUNCTION
+#define __VNZ_LANG_FUNCTION
+
+#include <memory>
+#include <Venice/Lang/Move>
+#include <Venice/Lang/Forward>
+#include <Venice/Lang/NonCopyable>
+#include <Venice/Box/Box>
+
+// From Mozilla WTF
+
+namespace Venice {
+    template <class O, class... I>
+    struct CallableWrapperBase
+    {
+        virtual ~CallableWrapperBase () {}
+        virtual O operator() (I...) = 0;
+    };
+
+    template <class, class, class...>
+    struct CallableWrapper;
+    template <class CT, class O, class... I>
+    struct CallableWrapper : public CallableWrapperBase<O, I...>
+    {
+        CT inner;
+
+        explicit CallableWrapper (CallableType && callable)
+            : inner (vnz::Move (callable))
+        {}
+        VNZ_NO_COPY (CallableWrapper);
+        VNZ_NO_COPY_ASSIGN (CallableWrapper);
+
+        O call (I... i) final
+        {
+            return inner (vnz::Forward<I> (i)...);
+        }
+    };
+
+    template <class>
+    struct Function;
+    template <class O, class I>
+    struct Function<O (I...)>
+    {
+        Box<CallableWrapperBase<O, I...>> inner;
+
+        Function () = default;
+        Function (nullptr_t) {}
+
+        template <typename CallableType, class = typename std::enable_if<!(std::is_pointer<CallableType>::value && std::is_function<typename std::remove_pointer<CallableType>::type>::value) && std::is_rvalue_reference<CallableType &&>::value>::type>
+        Function (CallableType && callable)
+            : this->inner (makeUnique<Detail::CallableWrapper<CallableType, O, I...>> (vnz::Move (callable)))
+        {}
+
+        template <typename FunctionType, class = typename std::enable_if<std::is_pointer<FunctionType>::value && std::is_function<typename std::remove_pointer<FunctionType>::type>::value>::type>
+        Function (FunctionType f)
+            : this->inner (makeUnique<Detail::CallableWrapper<FunctionType, O, I...>> (vnz::Move (f)))
+        {}
+
+        O operator() (I... in) const
+        {
+            // ASSERT (this->inner);
+            return this->inner->call (vnz::Forward<I> (in)...);
+        }
+
+        explicit operator bool () const { return !!this->inner; }
+
+        template <typename CallableType, class = typename std::enable_if<!(std::is_pointer<CallableType>::value && std::is_function<typename std::remove_pointer<CallableType>::type>::value) && std::is_rvalue_reference<CallableType &&>::value>::type>
+        Function & operator= (CallableType && callable)
+        {
+            this->inner = makeUnique<Detail::CallableWrapper<CallableType, O, I...>> (vnz::Move (callable));
+            return *this;
+        }
+
+        template <typename FunctionType, class = typename std::enable_if<std::is_pointer<FunctionType>::value && std::is_function<typename std::remove_pointer<FunctionType>::type>::value>::type>
+        Function & operator= (FunctionType f)
+        {
+            this->inner = makeUnique<Detail::CallableWrapper<FunctionType, O, I...>> (vnz::Move (f));
+            return *this;
+        }
+
+        Function & operator= (std::nullptr_t)
+        {
+            this->inner = nullptr;
+            return *this;
+        }
+    };
+}
+
+#endif /* !@__VNZ_LANG_FUNCTION */

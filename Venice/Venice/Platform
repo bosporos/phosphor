@@ -1,0 +1,75 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_PLATFORM
+#define __VNZ_PLATFORM
+
+#include <Venice/Compiler>
+
+#define PLATFORM(VNZ_FEATURE) (defined VNZ_PLATFORM_##VNZ_FEATURE && VNZ_PLATFORM_##VNZ_FEATURE)
+#define CPU(VNZ_FEATURE) (defined VNZ_CPU_##VNZ_FEATURE && VNZ_CPU_##VNZ_FEATURE)
+#define OS(VNZ_FEATURE) (defined VNZ_OS_##VNZ_FEATURE && VNZ_OS_##VNZ_FEATURE)
+#define VNZ_ENABLE(VNZ_FEATURE) (defined VNZ_ENABLE_##VNZ_FEATURE && VNZ_ENABLE_##VNZ_FEATURE)
+
+#if defined(__x86_64__) || defined(_M_X64)
+#    define VNZ_CPU_X86_64 1
+#endif
+
+// Check the pointer width
+// This is used by usize/uptr/isize/iptr
+
+#if COMPILER(GNU_COMPATIBLE) && defined(__SIZEOF_POINTER__)
+// GNU compatible compilers will define a __SIZEOF_POINTER__ that gives the size of the pointer type in bytes
+#    if __SIZEOF_POINTER__ == 8
+#        define VNZ_CPU_ADDRESS64 1
+#    elif __SIZEOF_POINTER__ == 4 /* /POINTER64 */
+#        define VNZ_CPU_ADDRESS32 1
+#    endif /* /POINTER32 */
+#else /* COMPILER+GNU_COMPATIBLE */
+// For non-GNU compatible compilers, check the __UINTPTR_WIDTH__ macro
+#    if defined(__UINTPTR_WIDTH__)
+#        if __UINTPTR_WIDTH__ == 64
+#            define VNZ_CPU_ADDRESS64
+#        elif __UINTPTR_WIDTH__ == 32 /* /POINTER64 */
+#            define VNZ_CPU_ADDRESS32
+#        endif /* /POINTER32 */
+#    else
+// If that doesn't work, then pull stdint and compare UINTPTR_MAX to the sized macro maximums (UINT64_MAX and UINT32_MAX)
+// While perhaps the most "standards-conforming" way of doing this, including <stdint.h> means a lot of overhead, compared with the simpler macro checks that are given preference
+#        include <stdint.h>
+#        if UINTPTR_MAX == UINT64_MAX
+#            define VNZ_CPU_ADDRESS64
+#        elif UINTPTR_MAX == UINT32_MAX /* /POINTER64 */
+#            define VNZ_CPU_ADDRESS32
+#        endif /* /POINTER32 */
+#    endif /* @__UINTPTR_WIDTH__ */
+#endif /* COMPILER+GNU_COMPATIBLE \| */
+
+#if CPU(ADDRESS32)
+#    error "Venice does not support 32-bit systems"
+#endif
+
+// Check the data architecture of the system
+//  TYPE        WIDTH (LP64)    WIDTH (LLP64)
+// short        16              16
+// int          32              32
+// long         64              32
+// long long    64              64
+// ptr_t/size_t 64              64
+// LLP64 is only really used by Visual C++ and MinGW
+// LP64 is used by most Unices and Unix-like systems, as well as Cygwin
+//
+// ILP64 and SILP64 aren't supported
+#if defined(__LP64__) || defined(_LP64) || defined(__lp64__)
+#    define VNZ_OS_LP64
+#elif defined(_WIN64)
+#    define VNZ_OS_LLP64
+#else
+#    error "Unknown system data architecture"
+#endif
+
+#endif /* !@__VNZ_PLATFORM */

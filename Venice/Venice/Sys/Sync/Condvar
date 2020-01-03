@@ -1,0 +1,19 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_SYS_SYNC_CONDVAR
+#define __VNZ_SYS_SYNC_CONDVAR
+
+#include <Venice/Features>
+
+#if OS(HAS_PTHREADS)
+#    include <Venice/Sys/pthread-base/Sync/Condvar>
+#else
+#    error "No viable threading system found"
+#endif
+
+#endif /* !@__VNZ_SYS_SYNC_CONDVAR */
