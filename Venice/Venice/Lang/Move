@@ -12,9 +12,9 @@
 #include <Venice/Lang/Dequalify>
 #include <Venice/Lang/Traits>
 
-namespace Venice {
+namespace vnz {
     template <typename T>
-    ALWAYS_INLINE constexpr typename vnz::RemoveReference<T>::Type && Move (T && value)
+    ALWAYS_INLINE constexpr typename vnz::RemoveReference<T>::Type && move (T && value)
     {
         static_assert (vnz::IsLValueReference<T>::Value, "T is not an lvalue reference; move is not necessary");
 

@@ -10,7 +10,7 @@
 
 #include <Venice/Num/NativeIntegers>
 
-namespace Venice {
+namespace vnz {
 
     template <class T>
     struct DequalifyUnsigned
@@ -20,10 +20,10 @@ namespace Venice {
     };
 
 #define _Venice_RIU(__UNSIGNED__, __SIGNED__) \
-    template <>                                \
-    struct DequalifyUnsigned<__UNSIGNED__>     \
-    {                                          \
-        typedef __SIGNED__ Type;               \
+    template <>                               \
+    struct DequalifyUnsigned<__UNSIGNED__>    \
+    {                                         \
+        typedef __SIGNED__ Type;              \
     }
 
     _Venice_RIU (_u8, _i8);

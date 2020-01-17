@@ -5,6 +5,10 @@
 
 BasedOnStyle:                                   WebKit
 
+# We really care about how our C++ looks
+# There's a very specific style of C++ that is used for these projects, and it is
+# not to be broken with
+
 Language:                                       Cpp
 AccessModifierOffset:                           -4
 AlignAfterOpenBracket:                          Align

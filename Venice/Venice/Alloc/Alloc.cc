@@ -5,481 +5,636 @@
 
 #include <Venice/Alloc/Alloc>
 
-using namespace vnz::math;
-using vnz::atomic::Ordering;
 using namespace vnz::alloc;
+using vnz::atomic::Ordering;
 
-ALWAYS_INLINE _u8 * align8 (void * ptr) { return static_cast<_u8 *> (ptr); }
+/*
+ * Block
+ */
 
-template <class T>
-static DLListItem<T> * furthest_left (DLListItem<T> * node)
-{
-    while (node->left != nullptr) {
-        node = node->left;
-    }
-    return node;
-}
-
-template <class T>
-static DLListItem<T> * furthest_right (DLListItem<T> * node)
-{
-    while (node->right != nullptr) {
-        node = node->right;
-    }
-    return node;
-}
-
-template <class T>
-static DLListItem<T> * find_left (T * x, DLListItem<T> * node)
-{
-    while (node->left != nullptr) {
-        if (node->inner == x)
-            return node;
-        node = node->left;
-    }
-    return nullptr;
-}
-
-template <class T>
-static DLListItem<T> * find_right (T * x, DLListItem<T> * node)
-{
-    while (node->right != nullptr) {
-        if (node->inner == x)
-            return node;
-        node = node->right;
-    }
-    return nullptr;
-}
-
-Block::Block ()
+Block::Block (void (*__shadow) (Block *))
     : range_begin { nullptr }
     , freeptr_local { nullptr }
-    , freeptr_global { nullptr }
-    , objects_free (0)
+    , freeptr_global (nullptr)
     , object_size { 0 }
-    , object_capacity { 0 }
-    , __padding0 { 0, 0 }
+    , object_count { 0 }
+    , __allocation_count { 0 }
+    , allocation_count (0)
+    /* Initialize the thread ID to the calling thread */
     , local_thread_id ()
-    , global_lock ()
-    , chain { nullptr }
-{}
+    /* Set up the shadow destructor */
+    , __shadow_free { __shadow }
+{
+}
 
 Block::~Block ()
-{}
-
-void Block::assign (void * mem)
 {
-    this->range_begin = mem;
-}
-
-void Block::assign_chain (void * chain)
-{
-    this->chain = chain;
-}
-
-void Block::format (_u16 const size)
-{
-    this->object_size     = size;
-    this->object_capacity = __VNZA_PAGE_SIZE / size;
-    this->objects_free.store (this->object_capacity, Ordering::Relaxed);
-
-    this->freeptr_local = align8 (this->range_begin)
-        + ((this->object_capacity - 1) * this->object_size);
-
-    _u16 last = 0xffff;
-
-    while (last > 0) {
-        *static_cast<_u16 *> (this->freeptr_local) = last;
-        last                                       = align8 (this->freeptr_local) - align8 (this->range_begin);
-        this->freeptr_local                        = align8 (this->freeptr_local) - this->object_size;
+    if (this->__shadow_free) {
+        this->__shadow_free (this);
     }
-
-    // debug_assert_eq(this->freeptr_local - this->range_begin, 0);
 }
 
-void * Block::alloc_object ()
+// it was a great deal of trouble to figure out how to make Block-level allocation/deallocation
+// lockless, but I eventually found a solution
+// this is based on several facets of the architecture:
+//  1. only chain heads will receive request_allocation() calls
+//  2. chain heads are 'stranded', that is, they may not be moved to higher heaps
+// a Block will not become a chain head unless it is "empty enough"
+
+void * Block::request_allocation ()
 {
-    if (this->freeptr_local != nullptr) {
-        return this->alloc_object_local ();
-    } else {
-        this->global_lock.lock ();
-        // freeptr_local is nullptr, and can only be changed from the local thread i.e. sequentially
-        this->freeptr_local  = this->freeptr_global;
-        this->freeptr_global = nullptr;
-        this->global_lock.unlock ();
+    if (__atomic_add_fetch (&this->__allocation_count, 1, __ATOMIC_ACQ_REL) <= this->object_count) {
+        this->allocation_count.fetch_add (1, Ordering::AcqRel);
         if (this->freeptr_local != nullptr) {
-            return this->alloc_object_local ();
+            return this->request_allocation_from_local_list ();
         } else {
-            return nullptr;
+            void * global = __atomic_exchange_n (&this->freeptr_global, nullptr, __ATOMIC_ACQ_REL);
+            // we know that freeptr_local is still a nullptr as request_allocation()
+            // is only available to the owning thread, and only the owning thread
+            // can deallocate objects to the local freelist
+            this->freeptr_local = global;
+            if (this->freeptr_local != nullptr) {
+                return this->request_allocation_from_local_list ();
+            } else {
+                // global was blank too
+                return nullptr;
+            }
         }
+    } else {
+        // because the count checking mechanism unconditionally adds 1 to __allocation_count,
+        // we have to disregard
+        // because of this, __allocation_count is not completely accurate...
+        // external observers are better off using allocation_count
+        __atomic_sub_fetch (&this->__allocation_count, 1, __ATOMIC_ACQ_REL);
+        return nullptr;
     }
 }
 
-void * Block::alloc_object_local ()
+void * Block::request_allocation_from_local_list ()
 {
-    void * object                = this->freeptr_local;
-    _u16 next_object_indirection = *static_cast<_u16 *> (object);
-    if (next_object_indirection != 0xffff) {
-        this->freeptr_local = next_object_indirection + align8 (this->range_begin);
+    void * object     = this->freeptr_local;
+    math::_u16 offset = *internal::af (object);
+    if (offset != 0xffff) {
+        this->freeptr_local = internal::a8 (this->range_begin) + offset;
     } else {
         this->freeptr_local = nullptr;
     }
-    this->objects_free.fetch_sub (1, Ordering::Release);
-    // if (this->chain != nullptr)
-    // static_cast<BlockChain *> (this->chain)->metric_alloc (this);
     return object;
 }
 
-void Block::dealloc_object (void * object)
+void Block::request_deallocation (void * block_to_deallocate)
 {
     if (this->local_thread_id.is_current ()) {
-        if (this->freeptr_local == nullptr) {
-            *static_cast<_u16 *> (object) = 0xffff;
+        if (this->freeptr_local != nullptr) {
+            *internal::af (block_to_deallocate)
+                = internal::a8 (this->freeptr_local)
+                - internal::a8 (this->range_begin);
         } else {
-            *static_cast<_u16 *> (object) = align8 (this->freeptr_local) - align8 (this->range_begin);
+            *internal::af (block_to_deallocate) = 0xffff;
         }
-        this->freeptr_local = object;
-        this->objects_free.fetch_add (1, Ordering::Release);
     } else {
-        this->global_lock.lock ();
-        if (this->freeptr_global == nullptr) {
-            *static_cast<_u16 *> (object) = 0xffff;
-        } else {
-            *static_cast<_u16 *> (object) = align8 (this->freeptr_global) - align8 (this->range_begin);
-        }
-        this->freeptr_global = object;
-        this->global_lock.unlock ();
-        this->objects_free.fetch_add (1, Ordering::Release);
+        // this little routine here could potentially become quite contentious in a bad turn
+        void * loadref = __atomic_load_n (&freeptr_global, __ATOMIC_ACQUIRE);
+        do {
+            if (loadref != nullptr) {
+                *internal::af (block_to_deallocate)
+                    /* __atomic_compare_exchange_n puts the new value of freeptr_global into loadref
+                    if the compare fails, which means we only need the direct load once */
+                    = internal::a8 (loadref)
+                    - internal::a8 (this->range_begin);
+            } else {
+                // terminating value
+                *internal::af (block_to_deallocate) = 0xffff;
+            }
+        } while (__atomic_compare_exchange_n (&this->freeptr_global, &loadref, block_to_deallocate, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE));
     }
-    // static_cast<BlockChain *> (this->chain)->metric_dealloc (this);
-    if (this->objects_free.load (Ordering::Relaxed) == this->object_capacity)
-        static_cast<BlockChain *> (this->chain)->block_empty (this);
+    __atomic_fetch_sub (&this->__allocation_count, 1, __ATOMIC_ACQ_REL);
+    if (this->allocation_count.fetch_sub (1, Ordering::AcqRel) <= __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->metric->metric_block_sufficient_emptiness (this)) {
+        this->hook_is_empty_enough ();
+    }
+
+    math::_u16 __zero_ref16 = 0;
+    // we can rely on __allocation_count here because __allocation_count >= allocation_count
+    // if __allocation_count is 0, then, allocation count must be 0 as well
+    if (__atomic_compare_exchange_n (&this->__allocation_count, &__zero_ref16, 0xf000, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        this->hook_is_empty ();
+    }
 }
 
-#include <sys/mman.h>
+void Block::hook_is_empty_enough ()
+{
+    __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->hook_block_is_empty (this);
+}
+
+void Block::hook_is_empty ()
+{
+    __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->hook_block_is_empty_enough (this);
+}
+
+void Block::assign_memory_range (void * range_beginning)
+{
+    this->range_begin = range_beginning;
+}
+
+Block * Block::format (math::_u16 const obj_sz)
+{
+    this->object_size  = obj_sz;
+    this->object_count = 0x4000 / obj_sz;
+
+    this->freeptr_global = nullptr;
+    this->freeptr_local
+        = internal::a8 (this->range_begin)
+        + this->object_count * this->object_size;
+    *internal::af (this->freeptr_local) = 0xffff;
+    do {
+        math::_u16 offset = internal::af (this->freeptr_local)
+            - internal::af (this->range_begin);
+        this->freeptr_local = internal::a8 (this->freeptr_local)
+            - this->object_size;
+        *internal::af (this->freeptr_local) = offset;
+    } while (this->freeptr_local > this->range_begin);
+    // this is owning thread, format implies empty, so we're clear to do direct
+    // access
+    this->allocation_count.inner = 0;
+    this->__allocation_count     = 0;
+
+    return this;
+}
+
+#include <sys/mman.h> /* mmap */
+#include <stdlib.h> /* abort */
+#include <new> /* placement new */
+
+/*
+ * Chunk
+ */
 
 Chunk::Chunk ()
+    : range_begin { nullptr }
+    , block_availability { ~0ull }
+    , chunk_lock ()
 {
-    void * mem = mmap (NULL, __VNZA_CHUNK_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_SHARED, 0, 0);
-    if (mem == MAP_FAILED) {
+    void * memory_pages = mmap (
+        /* no prespecified address */
+        NULL,
+        /* 1 MiB = 1024 KiB = 64 Blocks */
+        0x100000,
+        /* All permissions */
+        PROT_READ | PROT_EXEC | PROT_WRITE,
+        /* Anonymous map, unassociated with any external data */
+        MAP_ANON | MAP_PRIVATE,
+        /* Inapplicable values related to file mappings */
+        0,
+        0);
+    if (memory_pages == MAP_FAILED) {
+        // todo replace with panic
         abort ();
     }
-    this->range_begin = mem;
-    _u8 * byte_ptr    = align8 (this->range_begin);
-    for (_usize i = 0; i < 64; i++) {
-        this->blocks[i].assign (static_cast<void *> (byte_ptr));
-        byte_ptr += __VNZA_PAGE_SIZE;
+
+    this->range_begin = memory_pages;
+    for (int i = 0; i < 64; ++i) {
+        new (&this->blocks[i]) Block ();
+        this->blocks[i].assign_memory_range (internal::a8 (this->range_begin) + i * 0x4000);
     }
 }
 
 Chunk::~Chunk ()
 {
-    if (munmap (this->range_begin, __VNZA_CHUNK_SIZE) != 0) {
+    for (int i = 0; i < 64; ++i) {
+        this->blocks[i].~Block ();
+    }
+
+    if (-1 == munmap (&this->range_begin, 0x100000)) {
+        // a) not aligned to page (impossibe unless range_begin is externally edited)
+        // b) length parameter negative or 0 (imposible, it's a constant)
+        // c) some part of the mapped region is in non-valid address space
+        // theoretically impossible, but todo replace with panic anyways
         abort ();
     }
 }
 
-ChunkChain::ChunkChain ()
-    : head (nullptr)
-    , chain_lock ()
+Block * Chunk::request_block_if_available ()
 {
-    head.right = nullptr;
-    head.left  = nullptr;
+    Block * block = nullptr;
+    // need chunk_lock to guard block_availability
+    this->chunk_lock.lock ();
+    if (this->block_availability) {
+        // number of leading zero bits...
+        int offset = __builtin_clzl (this->block_availability);
+        this->block_availability &= ~(0x8000000000000000 >> offset);
+        block = &this->blocks[offset];
+    }
+    this->chunk_lock.unlock ();
+    return block;
 }
 
-ChunkChain::~ChunkChain ()
+Block * Chunk::find_block_for_object (void * object)
+{
+    math::_u64 offset = internal::a8 (object) - internal::a8 (this->range_begin);
+    // assert (offset < 0x100000);
+    offset /= 0x4000;
+    return &this->blocks[offset];
+}
+
+/*
+ * ChunkLinkage
+ */
+
+ChunkLinkage::ChunkLinkage ()
+    : chunks ()
+    , linkage_lock ()
 {}
 
-Chunk * ChunkChain::find_chunk (void * addr)
+ChunkLinkage::~ChunkLinkage ()
+{}
+
+Chunk * ChunkLinkage::find_chunk_for_object (void * object)
 {
-    this->chain_lock.read ();
-    if (this->head.inner == nullptr) {
-        return nullptr;
-    }
-    DLListItem<Chunk> * current = &this->head;
-    while (current != nullptr) {
-        if (align8 (addr) - align8 (current->inner->range_begin) < __VNZA_CHUNK_SIZE) {
-            // It's OK to return at this point because the Chunk is a) disassociated from the chain and b) not going to suddenly disappear while there are outstanding references to it
-            Chunk * chunk = current->inner;
-            this->chain_lock.read_unlock ();
-            return chunk;
+    this->linkage_lock.lock ();
+    internal::DLListItem<Chunk> * link = chunks.head;
+    while (link != nullptr) {
+        if (0x100000 > (internal::a8 (object) - internal::a8 (link->inner->range_begin))) {
+            this->linkage_lock.unlock ();
+            return link->inner;
         }
-        current = current->right;
+        link = link->right;
     }
-    this->chain_lock.read_unlock ();
+    this->linkage_lock.unlock ();
     return nullptr;
 }
 
-void ChunkChain::add_chunk (Chunk * chunk)
+void ChunkLinkage::add_chunk (Chunk * chunk)
 {
-    this->chain_lock.write ();
-    if (this->head.inner != nullptr) {
-        DLListItem<Chunk> * link = static_cast<DLListItem<Chunk> *> (internal::alloc24 ());
-        *link                    = this->head;
-        link->left               = &this->head;
-        this->head.right         = link;
-    }
-    this->head.inner = chunk;
-    this->chain_lock.write_unlock ();
+    this->linkage_lock.lock ();
+    this->chunks.add_as_head (chunk);
+    this->linkage_lock.unlock ();
 }
 
-Chunk * ChunkChain::remove_chunk (Chunk * chunk)
+Chunk * ChunkLinkage::remove_chunk (Chunk * chunk)
 {
-    this->chain_lock.write ();
-    if (this->head.inner == nullptr) {
+    this->linkage_lock.lock ();
+    internal::DLListItem<Chunk> * link = this->chunks.head;
+    while (link != nullptr && link->inner != chunk) {
+    }
+    if (link == nullptr) {
+        this->linkage_lock.unlock ();
         return nullptr;
-    } else {
-        DLListItem<Chunk> * current = &this->head;
-        while (current != nullptr) {
-            if (current->inner == chunk) {
-                Chunk * chunk = current->inner;
-                if (current != &this->head) {
-                    // Left pointer is guaranteed if not HEAD
-                    current->left->right = current->right;
-                    // But the right pointer isn't
-                    if (current->right != nullptr) {
-                        current->right->left = current->left;
-                    }
-                    internal::free24 (current);
-                } else {
-                    Chunk * chunk = head.inner;
-                    if (current->right == nullptr) {
-                        // HEAD is the only block in the chain
-                        current->inner = nullptr;
-                    } else {
-                        // there are multiple blocks in the chain
-                        DLListItem<Chunk> * drop = head.right;
-                        head.right               = head.right->right;
-                        head.inner               = head.right->inner;
-                        if (head.right != nullptr) {
-                            head.right->left = &head;
-                        }
-                        internal::free24 (drop);
-                    }
-                }
-                this->chain_lock.write_unlock ();
-                return chunk;
-            }
-            current = current->right;
-        }
     }
-    this->chain_lock.write_unlock ();
-    return nullptr;
+    this->chunks.remove (link);
+    this->linkage_lock.unlock ();
+    return chunk;
 }
 
-#include <new>
+/*
+ * ChunkTable
+ */
 
-ChunkTable::ChunkTable (math::_usize num_slots)
-    : chains { nullptr }
-    , hash_slots { num_slots }
+ChunkTable::ChunkTable (const math::_usize slots)
+    : hash_slots (slots)
 {
-    this->chains = static_cast<ChunkChain *> (internal::alloc_ct (this->hash_slots * sizeof (ChunkChain)));
-    if (this->chains == nullptr) {
-        abort ();
-    }
-    for (_usize i = 0; i < this->hash_slots; i++) {
-        new (this->chains + i) ChunkChain ();
+    this->linkages = internal::allocate_dalt_linkages<ChunkLinkage> (slots);
+    for (math::_usize i = 0; i < slots; i++) {
+        new (&this->linkages[i]) ChunkLinkage ();
     }
 }
 
 ChunkTable::~ChunkTable ()
 {
-    for (_usize i = 0; i < this->hash_slots; i++) {
-        this->chains[i].~ChunkChain ();
+    for (math::_usize i = 0; i < this->hash_slots; i++) {
+        this->linkages[i].~ChunkLinkage ();
     }
-    internal::free_ct (static_cast<void *> (this->chains), this->hash_slots * sizeof (ChunkChain));
+}
+
+Block * ChunkTable::find_block_for_object (void * object)
+{
+    return this->find_chunk_for_object (object)->find_block_for_object (object);
 }
 
 void ChunkTable::add_chunk (Chunk * chunk)
 {
-    _usize range_low  = this->slot_hash (chunk->range_begin);
-    _usize range_high = this->slot_hash (align8 (chunk->range_begin) + __VNZA_CHUNK_SIZE - 1);
-    if (range_low != range_high) {
-        this->chains[range_low].add_chunk (chunk);
-        this->chains[range_high].add_chunk (chunk);
-    }
+    this->linkages[this->slot_hash (chunk->range_begin)].add_chunk (chunk);
 }
 
 Chunk * ChunkTable::remove_chunk (Chunk * chunk)
 {
-    _usize range_low  = this->slot_hash (chunk->range_begin);
-    _usize range_high = this->slot_hash (align8 (chunk->range_begin) + __VNZA_CHUNK_SIZE - 1);
-    if (range_low != range_high) {
-        this->chains[range_low].remove_chunk (chunk);
-        this->chains[range_high].remove_chunk (chunk);
+    return this->linkages[this->slot_hash (chunk->range_begin)].remove_chunk (chunk);
+}
+
+/*
+ * DeallocationBlockLinkage
+ */
+
+DeallocationBlockLinkage::DeallocationBlockLinkage ()
+    : blocks ()
+    , linkage_lock ()
+{}
+
+DeallocationBlockLinkage::~DeallocationBlockLinkage ()
+{}
+
+Block * DeallocationBlockLinkage::find_block_for_object (void * object)
+{
+    this->linkage_lock.lock ();
+    internal::DLListItem<Block> * link = this->blocks.head;
+    while (link != nullptr) {
+        if (0x100000 > (internal::a8 (object) - internal::a8 (link->inner->range_begin))) {
+            this->linkage_lock.unlock ();
+            return link->inner;
+        }
+        link = link->right;
     }
+    this->linkage_lock.unlock ();
+    return nullptr;
+}
+
+void DeallocationBlockLinkage::add_block (Block * chunk)
+{
+    this->linkage_lock.lock ();
+    this->blocks.add_as_head (chunk);
+    this->linkage_lock.unlock ();
+}
+
+Block * DeallocationBlockLinkage::remove_block (Block * chunk)
+{
+    this->linkage_lock.lock ();
+    internal::DLListItem<Block> * link = blocks.head;
+    while (link != nullptr && link->inner != chunk) {
+    }
+    if (link == nullptr) {
+        this->linkage_lock.unlock ();
+        return nullptr;
+    }
+    this->blocks.remove (link);
+    this->linkage_lock.unlock ();
     return chunk;
 }
 
-BlockChain::BlockChain (Heap * heap)
-    : head (nullptr, nullptr, nullptr)
-    , parent { heap }
-    , chain_lock ()
-{}
+/*
+ * BlockTable
+ */
 
-BlockChain::~BlockChain ()
+BlockTable::BlockTable (const math::_usize slots)
+    : hash_slots (slots)
 {
-    this->chain_lock.lock ();
-    if (this->head.inner != nullptr) {
-        DLListItem<Block> * current = &this->head;
-        while (current != nullptr) {
-            this->parent->handle_free_block (current->inner);
-            DLListItem<Block> * old = current;
-            current                 = current->right;
-            if (old != &this->head) {
-                internal::free24 (old);
-            }
+    this->linkages = internal::allocate_dalt_linkages<DeallocationBlockLinkage> (slots);
+    for (math::_usize i = 0; i < slots; i++) {
+        new (&this->linkages[i]) DeallocationBlockLinkage ();
+    }
+}
+
+BlockTable::~BlockTable ()
+{
+    for (math::_usize i = 0; i < this->hash_slots; i++) {
+        this->linkages[i].~DeallocationBlockLinkage ();
+    }
+}
+
+Block * BlockTable::find_block_for_object (void * object)
+{
+    return this->linkages[this->slot_hash (object)].find_block_for_object (object);
+}
+
+/*
+ * BlockAllocation Linkage
+ */
+
+BlockAllocationLinkage::BlockAllocationLinkage (Metric * metric, math::_u16 const obj_sz)
+    : metric { metric }
+    , bal_lock ()
+    , parent { nullptr }
+    , head (nullptr)
+    , empties (0)
+    , object_size { obj_sz }
+{
+}
+
+BlockAllocationLinkage::~BlockAllocationLinkage ()
+{
+    // metric is a pointer, and bal_lock::~Mutex can handle itself
+    // just gotta take care of the blocks
+
+    this->bal_lock.lock ();
+    internal::DLListItem<Block> *li = head->left, *new_li;
+    while (li != nullptr) {
+        __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->parent_sized->hook_child_recycling_block (li->inner);
+        new_li = li->left;
+        internal::free_dllistitem (li);
+        li = new_li;
+    }
+    li = head->right;
+    while (li != nullptr) {
+        if (li->inner->allocation_count.load (Ordering::Acquire) == 0) {
+            __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->parent_unsized->hook_child_recycling_block (li->inner);
+        } else {
+            __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->parent_sized->hook_child_recycling_block (li->inner);
         }
-        current = this->head.left;
-        while (current != nullptr) {
-            this->parent->handle_free_block (current->inner);
-            DLListItem<Block> * old = current;
-            current                 = current->left;
-        }
+        new_Li = li->right;
+        internal::free_dllistitem (li);
+        li = new_li;
     }
-    this->chain_lock.unlock ();
+    // special lock
+    // higher than the normal lock
+    __atomic_store_n (&this->head->inner->__allocation_count, 0xf800, __ATOMIC_RELEASE);
+    if (this->head->inner->allocation_count.load (Ordering::Acquire) == 0) {
+        __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->parent_sized = this->head->inner;
+        internal::free_dllistitem (this->head);
+        this->head = nullptr;
+    }
+    this->bal_lock.unlock ();
 }
 
-SizedBlockChain::SizedBlockChain (const _u16 os, Heap * heap)
-    : BlockChain (heap)
-    , object_size { os }
-    , left_length (0)
-    , right_length (0)
-{}
-
-SizedBlockChain::~SizedBlockChain ()
-{}
-
-void * SizedBlockChain::alloc_object ()
+void BlockAllocationLinkage::hook_block_is_empty (Block * block)
 {
-    void * object = this->head.inner->alloc_object ();
-    if (LIKELY (object != nullptr)) {
-        return object;
-    } else {
-        Block * block = this->needs_block ();
-        if (block != nullptr)
-            return block->alloc_object ();
-        else
-            return nullptr;
-    }
-}
-
-// ew: k(y)d djs ksj
-// me: ... blzjernju srzamokju
-// ew: :skol:
-
-Block * SizedBlockChain::needs_block ()
-{
-    Block * block = this->parent->request_block ();
-    if (block != nullptr) {
-        this->add_as_head (block);
-    }
-    return block;
-}
-
-void SizedBlockChain::block_empty (Block * block)
-{
-    this->chain_lock.lock ();
-    if (block == this->head.inner) {
-        this->chain_lock.unlock ();
+    typedef internal::DLListItem<Block> LI;
+    // because of the implementation of ``Block::request_allocation'' and
+    // ``Block::request_deallocation'', we know that ``block'' is empty and locked
+    // until __allocation_count is moved back within object_count, so we can feel
+    // free to do as we wish with it.
+    this->bal_lock.lock ();
+    // inner never changes, so a simple atomic read of the pointer is sufficient
+    if (block == this->head->inner) {
+        this->bal_lock.unlock ();
         return;
+    }
+    if (this->empties.load (Ordering::Acquire) > this->metric->metric_block_allocation_linkage_max_empties (this)) {
+        LI * li = this->head->find_left_right (block);
+        li->excise ();
+        internal::free_dllistitem (li);
+        this->bal_lock.unlock ();
+        __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->hook_block_is_empty (block);
     } else {
-        // move or throw up the chain
-        DLListItem<Block> * node = find_left<Block> (block, &this->head);
-        this->left_length.fetch_sub (1, Ordering::AcqRel);
-
-        // cauterize the left chain
-        node->right->left = node->left;
-        if (node->left != nullptr)
-            node->left->right = node->right;
-
-        if (this->right_length.load (Ordering::Acquire) <= this->metric->right_trim ()) {
-            // add to the right chain
-            node->right = this->head.right;
-            node->left  = &this->head;
-            if (node->right != nullptr)
-                node->right->left = node;
-            this->head.right = node;
-            this->right_length.fetch_add (1, Ordering::AcqRel);
-        } else {
-            // throw to parent
-            this->parent->handle_free_block (node->inner);
-            internal::free24 (node);
-        }
-        this->chain_lock.unlock ();
+        LI * li = this->head->find_left_right (block);
+        li->excise ();
+        this->head->add_right (li);
+        this->bal_lock.unlock ();
     }
 }
 
-void SizedBlockChain::add_as_head (Block * block)
+void BlockAllocationLinkage::hook_block_is_empty_enough (Block * block)
 {
-    this->chain_lock.lock ();
-    if (this->head.inner != nullptr) {
-        DLListItem<Block> * link = static_cast<DLListItem<Block> *> (internal::alloc24 ());
-        *link                    = this->head;
-        if (link->left != nullptr)
-            link->left->right = link;
-        link->right     = &this->head;
-        this->head.left = link;
+    typedef internal::DLListItem<Block> LI;
+    // we have no idea what's going on inside ``block''.
+    // it's not guarenteed to be empty, and it's not locked
+    // neither is it even guaranteed to be empty enough
+    this->bal_lock.lock ();
+    if (block == this->head->inner) {
+        this->bal_lock.unlock ();
+        return;
     }
-    this->head.inner = block;
-    if (this->left_length.fetch_add (1, Ordering::AcqRel) > this->metric->left_trim ()) {
-        DLListItem<Block> * leftmost = furthest_left (&this->head);
-        leftmost->right->left        = nullptr;
-        this->parent->reclaim_filled_block (leftmost->inner);
-        internal::free24 (leftmost);
-        this->left_length.fetch_sub (1, Ordering::AcqRel);
-    }
-    this->chain_lock.unlock ();
+    LI * li = this->head->find_left_right (block);
+    li->excise ();
+    this->head->add_right (li);
+
+    this->bal_lock.unlock ();
 }
 
-UnsizedBlockChain::UnsizedBlockChain (Heap * heap)
-    : BlockChain (heap)
-    , tail_lock ()
-    , length (0)
-{}
-
-UnsizedBlockChain::~UnsizedBlockChain ()
-{}
-
-void UnsizedBlockChain::push (Block * block)
-{
-    this->chain_lock.lock ();
-    if (this->head.inner == nullptr) {
-        this->head.inner = block;
-        this->tail       = &this->head;
-    } else {
-        if (this->length.fetch_add (1, Ordering::AcqRel) <= this->metric->trim ()) {
-            DLListItem<Block> * link = static_cast<DLListItem<Block> *> (internal::alloc24 ());
-            link->right              = this->tail->right;   // nullptr
-            this->tail->right        = link;
-            link->left               = this->tail;
-            link->inner              = block;
-            this->tail               = link;
-        } else {
-            // If it's too long, promote
-            this->parent->handle_free_block (this->pop ());
-        }
+#define __VNZA_BLOCK_ALLOCATION_SHORTHAND              \
+    object = this->head->inner->request_allocation (); \
+    if (LIKELY (object != nullptr))                    \
+        return object;
+#define __VNZA_BLOCK_ALLOCATION_SHORTHAND_L            \
+    object = this->head->inner->request_allocation (); \
+    if (LIKELY (object != nullptr)) {                  \
+        this->bal_lock.unlock ();                      \
+        return object;                                 \
     }
-    this->chain_lock.unlock ();
+
+void * BlockAllocationLinkage::allocate_from_linkage ()
+{
+    void * object;
+    __VNZA_BLOCK_ALLOCATION_SHORTHAND
+    this->bal_lock.lock ();
+    if (this->head->right != nullptr) {
+        this->head = this->head->right;
+    }
+    __VNZA_BLOCK_ALLOCATION_SHORTHAND_L
+    Block * block = __atomic_load_n (&this->parent, __ATOMIC_ACQUIRE)->hook_child_requesting_block (this->object_size);
+    __atomic_store_n (&block->parent, this, __ATOMIC_RELEASE);
+    this->head->add_right (internal::alloc_dllistitem (block));
+
+    this->head = this->head->right;
+    __VNZA_BLOCK_ALLOCATION_SHORTHAND_L
+
+    this->bal_lock.unlock ();
+    return nullptr;
 }
 
-Block * UnsizedBlockChain::pop ()
+/*
+ * Metric
+ */
+
+vnz::math::_u16 Metric::metric_block_sufficient_emptiness (Block * block)
 {
-    this->tail_lock.lock ();
-    Block * chop;
-    if (this->tail == &this->head) {
-        chop             = this->head.inner;
-        this->head.inner = nullptr;
-        this->tail       = nullptr;
-        this->length.fetch_sub (1, Ordering::AcqRel);
-        this->tail_lock.unlock ();
-    } else {
-        this->tail->left->right      = nullptr;
-        DLListItem<Block> * cut_link = this->tail;
-        this->tail                   = this->tail->left;
-        this->length.fetch_sub (1, Ordering::AcqRel);
-        this->tail_lock.unlock ();
-        chop = cut_link->inner;
-        internal::free24 (cut_link);
+    return block->object_count / 4;
+}
+
+/*
+ * LocalAllocatingHeap
+ */
+
+extern "C"
+{
+    // floor(log2(a - 2^floor(log2(a)) + 2 * log2(a))
+    vnz::math::_i64 __vnz_chain_lookup (vnz::math::_u64 obj_size);
+}
+
+LocalAllocatingHeap::LocalAllocatingHeap (Metric * metric)
+    : parent_unsized { nullptr }
+    , parent_sized { nullptr }
+    , metric { metric }
+    , lah_lock ()
+{
+    for (i32 i = 0; i < 20; i++) {
+        // 2 ^ floor(i / 2) + (2 ^ floor(i / 2)) / (2 - i mod 2)
+        new (&this->linkages[i]) BlockAllocationLinkage (
+            this->metric,
+            1 << (i >> 1) /* 2 ^ floor(i / 2) */
+                | ((1 << (i >> 1)) /* 2 ^ floor(i / 2) */
+                   / (2 - (i & 1)))); /* / (2 - i mod 2) */
+        __atomic_store_n (&this->linkages[i].parent, this, __ATOMIC_RELEASE);
+        Block * block = this->hook_child_requesting_block (this->linkages[i].object_size);
+        __atomic_store_n (&block->parent, &this->linkages[i], __ATOMIC_RELEASE);
+        this->linkages[i].head = internal::alloc_dllistitem (block);
     }
+}
+
+LocalAllocatingHeap::~LocalAllocatingHeap ()
+{
+    for (i32 i = 0; i < 20; i++) {
+        this->linkages[i].~BlockAllocationLinkage ();
+    }
+}
+
+void * LocalAllocatingHeap (math::_u16 const obj_size)
+{
+    math::_u64 linkage_index = static_cast<math::_u64> (
+        __vnz_chain_lookup (
+            static_cast<math::_u64> (obj_size)));
+    // linkage_index == -1 -> error
+    // linkage_index >= 20 -> no deal, fall back to other allocators
+    // return nullptr for both
+    // use the negative uint trick for this:
+    if (UNLIKELY (20 <= linkage_index)) {
+        return nullptr;
+    }
+
+    return this->linkages[linkage_index].allocate_from_linkage ();
+}
+
+void LocalAllocatingHeap::hook_block_is_empty (Block * block)
+{
+    // called by BlockAllocationLinkage's hook_block_is_empty()
+    // At this point, ``block'' is the sole remaining reference to the Block
+
+    // basically, it was evicted from the linkage because the linkage had too many
+    // empties, so we can pass it back up to ``parent_unsized'' to be stored, or
+    // whatever it wants to do
+    this->parent_unsized->hook_block_is_empty (block);
+}
+
+Block * LocalAllocatingHeap::hook_child_requesting_block (const math::_u16 size)
+{
+    // called by BlockAllocationLinkage's allocate_from_linkage()
+    // Block is not reformatted on arrival, so that we can still use pre-formatted Blocks
+    // additionally, we must re-point the owning thread id
+    // also have to take care of the parent pointers
+
+    Block * block = this->parent_sized->hook_child_requesting_block (size);
+    if (block == nullptr) {
+        // unsized heaps don't care about size, so we use a constant for a marginal
+        // speed-up (don't have to deal with the ``size'' variable)
+        block = this->parent_unsized->hook_child_requesting_block (0);
+    }
+    if (LIKELY (block != nullptr)) {
+        block->local_thread_id.bind_to_current ();
+        if (block->object_size != size)
+            block > format (size);
+        return block;
+    } else {
+        // out-of-memory, pretty much
+        // should probably abort or something
+        // return nullptr;
+        abort ();
+    }
+}
+
+void LocalAllocatingHeap::hook_child_recycling_block (Block *)
+{
+    // BlockAllocationLinkage goes straight to parent_sized and parent_unsized
+    // for hook_child_recycling_block
+    // so, basically, nothing to do here
+    // this is an impossible!/unreachable!
+    abort ();
+}
+
+/*
+ * UnsizedReclamationLinkage
+ */
+
+UnsizedReclamationLinkage::UnsizedReclamationLinkage (Metric * metric)
+    : metric { metric }
+    , parent { nullptr }
+    , head { nullptr }
+    ,
+{
 }

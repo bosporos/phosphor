@@ -8,7 +8,7 @@
 #ifndef __VNZ_LANG_CONDITION
 #define __VNZ_LANG_CONDITION
 
-namespace Venice {
+namespace vnz {
     template <bool C, class T, class U>
     struct Conditional
     {};

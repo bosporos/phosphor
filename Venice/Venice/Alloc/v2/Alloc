@@ -1,0 +1,232 @@
+// -*- mode:c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_ALLOC_ALLOC
+#define __VNZ_ALLOC_ALLOC
+
+#include <Venice/Compiler>
+#include <Venice/Math/Integers>
+#include <Venice/Atomic/Atomic>
+#include <Venice/sys/pthread-base/thread/ID>
+// Note to self:: re-write with /sync/Lock and /sync/RwLock
+#include <Venice/sys/pthread-base/sync/Mutex>
+#include <Venice/sys/pthread-base/sync/RwLock>
+
+namespace vnz::alloc {
+    namespace internal {
+        // DLListItem
+        void * alloc24 ();
+        void free24 (void *);
+        void * alloc_ct (math::_usize);
+        void free_ct (void *, math::_usize);
+
+    }
+
+// 4KiB
+#define __VNZA_PAGE_SIZE 0x4000
+// 1 MiB
+#define __VNZA_CHUNK_SIZE 0x100000
+
+    //! Region of 4KiB (i.e. 1 page of memory)
+    //! Current size is
+    struct Block
+    {
+        void * range_begin;
+        void * freeptr_local;
+        // freeptr_global is only ever modified inside locked segments, so it doesn't need to be atomic
+        void * freeptr_global;
+
+        atomic::Atomic<math::_u16> objects_free;
+        math::_u16 object_size;
+        math::_u16 object_capacity;
+        UNUSED math::_u8 __padding0[2];
+
+        vnz::sys::thread::ID local_thread_id;
+        vnz::sys::sync::Mutex global_lock;
+
+        void * chain;
+
+        Block ();
+        ~Block ();
+
+        void assign (void *);
+        void assign_chain (void *);
+        void format (math::_u16 const);
+
+        void * alloc_object ();
+        void dealloc_object (void *);
+
+        void * alloc_object_local ();
+    };
+
+    template <class T>
+    struct DLListItem
+    {
+        DLListItem<T> * left;
+        DLListItem<T> * right;
+        T * inner;
+
+        DLListItem (T * x)
+            : left { nullptr }
+            , right { nullptr }
+            , inner { x }
+        {}
+        DLListItem (DLListItem<T> * left, DLListItem<T> * right, T * x)
+            : left { left }
+            , right { right }
+            , inner { x }
+        {}
+    };
+
+    struct Chunk
+    {
+        void * range_begin;
+        Block blocks[64];
+        atomic::Atomic<math::_u64> used_blocks;
+
+        Chunk ();
+        ~Chunk ();
+    };
+
+    struct ChunkChain
+    {
+        DLListItem<Chunk> head;
+        sys::sync::RwLock chain_lock;
+
+        ChunkChain ();
+        ~ChunkChain ();
+
+        Chunk * find_chunk (void *);
+        void add_chunk (Chunk *);
+        Chunk * remove_chunk (Chunk *);
+    };
+
+    struct ChunkTable
+    {
+        ChunkChain * chains;
+        const math::_usize hash_slots;
+
+        ChunkTable (const math::_usize);
+        ~ChunkTable ();
+
+        ALWAYS_INLINE math::_usize slot_hash (void * addr) const
+        {
+            return (reinterpret_cast<math::_usize> (addr) >> 20) % this->hash_slots;
+        }
+
+        void add_chunk (Chunk *);
+        Chunk * remove_chunk (Chunk *);
+        ALWAYS_INLINE Chunk * find_chunk_by_addr (void * addr) const
+        {
+            return this->chains[this->slot_hash (addr)].find_chunk (addr);
+        }
+    };
+
+    struct Heap;
+
+    struct Metric;
+
+    struct BlockChain
+    {
+        DLListItem<Block> head;
+        Heap * parent;
+        sys::sync::Mutex chain_lock;
+        Metric * metric;
+
+        BlockChain (Heap *);
+        ~BlockChain ();
+
+        // Called by Block::dealloc_object() when a block is emptied
+        virtual void block_empty (Block *) = 0;
+    };
+
+    struct SizedBlockChain
+        : public BlockChain
+    {
+        const math::_u16 object_size;
+        atomic::Atomic<math::_usize> left_length;
+        atomic::Atomic<math::_usize> right_length;
+
+        SizedBlockChain (const math::_u16, Heap *);
+        // Frees all held blocks to the parent chain
+        ~SizedBlockChain ();
+
+        void * alloc_object ();
+        // Called when the head is full
+        Block * needs_block ();
+        void block_empty (Block *);
+        // Adds as head, shifts existing HEAD to the left
+        void add_as_head (Block *);
+    };
+
+    struct UnsizedBlockChain
+        : public BlockChain
+    {
+        DLListItem<Block> * tail;
+        sys::sync::Mutex tail_lock;
+
+        atomic::Atomic<math::_usize> length;
+
+        UnsizedBlockChain (Heap *);
+        ~UnsizedBlockChain ();
+
+        void push (Block *);
+        Block * pop ();
+
+        // Impossible; block must be empty before going to a UBC
+        ALWAYS_INLINE void block_empty (Block *) {}
+    };
+
+    struct Heap
+    {
+        virtual Block * request_block ()                = 0;
+        virtual Block * request_block_no_propagation () = 0;
+        virtual void handle_free_block (Block *)        = 0;
+        virtual void reclaim_filled_block (Block *)     = 0;
+    };
+
+    struct LSHeap
+        : public Heap
+    {
+        /// Use anonymous union to prevent the constructor from trying to
+        /// initialize them
+        union {
+            SizedBlockChain chains[20];
+        };
+        Metric * metric;
+
+        Heap * first_sized_ancestor;
+        Heap * first_unsized_ancestor;
+
+        LSHeap ();
+        ~LSHeap ();
+
+        void * alloc_object (math::_u64 size);
+
+        Block * request_block ();
+        ALWAYS_INLINE Block * request_block_no_propagation () { return nullptr; }
+        void handle_free_block (Block *);
+        void reclaim_filled_block (Block *);
+    };
+
+    struct GSHeap
+        : public
+    {
+        union {
+            SizedBlockChain;
+        }
+    };
+
+    struct Metric
+    {
+        math::_usize left_trim () const;
+        math::_usize right_trim () const;
+        math::_usize trim () const;
+    };
+}
+
+#endif /* !@__VNZ_ALLOC_ALLOC */

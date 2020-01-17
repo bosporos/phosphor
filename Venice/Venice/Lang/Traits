@@ -8,7 +8,7 @@
 #ifndef __VNZ_LANG_TRAITS
 #define __VNZ_LANG_TRAITS
 
-namespace Venice {
+namespace vnz {
     template <typename T, T V>
     struct IntegralConstant
     {

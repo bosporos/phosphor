@@ -15,7 +15,7 @@
 
 // From Mozilla WTF
 
-namespace Venice {
+namespace vnz {
     template <typename FunctionType>
     struct ScopedLambda;
     template <typename ResultType, typename... ArgumentTypes>

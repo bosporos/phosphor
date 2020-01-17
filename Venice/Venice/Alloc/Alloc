@@ -5,199 +5,693 @@
 // author Maximilien M. Cura
 //
 
-#ifndef __VNZ_ALLOC_ALLOC
-#define __VNZ_ALLOC_ALLOC
+#ifndef __VNZ_ALLOC
+#define __VNZ_ALLOC
 
-#include <Venice/Compiler>
-#include <Venice/Math/Integers>
-#include <Venice/Atomic/Atomic>
-#include <Venice/sys/pthread-base/thread/ID>
-// Note to self:: re-write with /sync/Lock and /sync/RwLock
-#include <Venice/sys/pthread-base/sync/Mutex>
-#include <Venice/sys/pthread-base/sync/RwLock>
+#include <venice/Compiler> /* ALWAYS_INLINE */
+#include <venice/math/Integers> /* math::* */
+#include <venice/sys/thread/ID> /* sys::thread::ID */
+#include <venice/sys/sync/Mutex> /* sys::sync::Mutex */
+// #include <venice/sys/sync/RwLock> /* sys::sync::RwLock */
+#include <venice/atomic/Atomic>
 
 namespace vnz::alloc {
+    /// A set of routines for allocating necessary internal structures, as well as a set of
+    /// primitive list-based containers necessary for the system.
     namespace internal {
-        // DLListItem
-        void * alloc24 ();
-        void free24 (void *);
-        void * alloc_ct (math::_usize);
-        void free_ct (void *, math::_usize);
+        ALWAYS_INLINE math::_u8 * a8 (void * p)
+        {
+            return static_cast<math::_u8 *> (p);
+        }
+        ALWAYS_INLINE math::_u16 * af (void * p)
+        {
+            return static_cast<math::_u16 *> (p);
+        }
 
-    }
+        template <class T>
+        struct DLListItem;
 
-// 4KiB
-#define __VNZA_PAGE_SIZE 0x4000
-// 1 MiB
-#define __VNZA_CHUNK_SIZE 0x100000
+        /// Internal allocator responsible for allocating ``DLListItem''s.
+        /// Currently uses ``malloc'', so it may return a nullptr on OOM conditions.
+        /// @TODO: Move this duty to a more primitive custom allocation system.
+        template <class T>
+        DLListItem<T> * alloc_dllistitem (T * x)
+        {
+            return new (static_cast<DLListItem<T> *> (malloc (sizeof (DLListItem<T>)))) DLListItem (x);
+        }
+        /// Internal deallocator responsible for deallocating ``DLListItem''s.
+        /// Currently uses ``free''.
+        /// @TODO: Move this duty to a more primitive custom allocation system.
+        template <class T>
+        void free_dllistitem (DLListItem<T> * x)
+        {
+            x->~DLListItem ();
+            free (static_cast<void *> (x));
+        }
 
-    //! Region of 4KiB (i.e. 1 page of memory)
-    //! Current size is
+        /// Sequential implementation of the doubly-linked list item.
+        /// Tailored specificically for use cases in vnz::alloc.
+        /// Should not be used outside of mutex-locked operations, unless access
+        /// is guaranteed to be owner-only.
+        template <class T>
+        struct DLListItem
+        {
+            DLListItem<T> * left;
+            DLListItem<T> * right;
+            T * inner;
+
+            DLListItem (T * x)
+                : left { nullptr }
+                , right { nullptr }
+                , inner { x }
+            {}
+            DLListItem (DLListItem<T> * left, DLListItem<T> * right, T * x)
+                : left { left }
+                , right { right }
+                , inner { x }
+            {}
+
+            /// Removes the references to the item from its neighbours in the list.
+            /// Note: special caution should be taken when the item being ``excise''d
+            /// is referenced by external pointers.
+            void excise ()
+            {
+                // Have to check for nullptr's before dereferencing, to avoid
+                // segfaults and the like.
+                // Basically, makes the left and or right neighbours point at
+                // each other instead of this node.
+                if (this->left != nullptr)
+                    this->left->right = this->right;
+                if (this->right != nullptr)
+                    this->right->left = this->left;
+            }
+
+            /// Add a node to the right of the node.
+            void add_right (DLListItem<T> * link)
+            {
+                // Point the link at the node originally to the right of this one
+                link->right = this->right;
+                // if that node isn't a nullptr, then dereference it and point it
+                // back at the new node
+                if (link->right != nullptr)
+                    link->right->left = link;
+
+                // and then point the new node at this node as its left neighbour
+                this->right = link;
+                link->left  = this;
+            }
+
+            // Add a node to the left of the node.
+            void add_left (DLListItem<T> * link)
+            {
+                // Point the link at the node originally to the left of this one
+                link->left = this->left;
+                // if that node isn't a nullptr, then dereference it and point it
+                // back at the new node
+                if (link->left != nullptr)
+                    link->left->right = link;
+
+                // and then point the new node at this node as its right neighbour
+                this->left  = link;
+                link->right = this;
+            }
+
+            /// Gets the leftmost node on the list.
+            /// This is an O(n) operation.
+            /// If the list is circular, then this will create an infinite loop;
+            /// this method should not be called this way.
+            DLListItem<T> * leftmost ()
+            {
+                DLListItem<T> * current = this;
+                while (current->left != nullptr) {
+                    current = current->left;
+                    // no loop checking: will not occur in any operations in
+                    // vnz::alloc, and these list structures are only supposed to
+                    // be used here.
+                }
+                return current;
+            }
+
+            /// Gets the rightmost node on the list.
+            /// This is an O(n) operation.
+            /// If the list is circular, then this will create an infinite loop;
+            /// this method should not be called this way.
+            DLListItem<T> * rightmost ()
+            {
+                DLListItem<T> * current = this;
+                while (current->right != nullptr) {
+                    current = current->right;
+                    // no loop checking: will not occur in any operations in
+                    // vnz::alloc, and these list structures are only supposed to
+                    // be used here.
+                }
+                return current;
+            }
+
+            DLListItem<T> * find_left (T * needle)
+            {
+                DLListItem<T> * current = this;
+                while (current != nullptr && current->inner != needle) {
+                    current = current->left;
+                }
+                return current;
+            }
+
+            DLListItem<T> * find_right (T * needle)
+            {
+                DLListItem<T> * current = this;
+                while (current != nullptr && current->inner != needle) {
+                    current = current->right;
+                }
+                return current;
+            }
+
+            DLListItem<T> * find_left_right (T * needle)
+            {
+                DLListItem<T> * find = this->find_left (needle);
+                if (find != nullptr)
+                    return find;
+                return this->find_right (needle)
+            }
+
+            DLListItem<T> * find_right_left (T * needle)
+            {
+                DLListItem<T> * find = this->find_right (needle);
+                if (find != nullptr)
+                    return find;
+                return this->find_left (needle)
+            }
+        };
+
+#define VNZAlloc_DLDEQueue_FIFO 1
+#define VNZAlloc_DLDEQueue_LIFO 0
+        template <class T, bool FIFO>
+        struct DLDEQueue
+        {
+            DLListItem<T> * head;
+            DLListItem<T> * tail;
+
+            void push (T * x)
+            {
+                DLListItem<T> * new_link = alloc_dllistitem (x);
+                if (FIFO) {
+                    if (head != nullptr) {
+                        head->add_left (new_link);
+                        head = head->left;
+                    } else {
+                        head = new_link;
+                        tail = new_link;
+                    }
+                } else { /* LIFO */
+                    if (head != nullptr) {
+                        tail->add_right (new_link);
+                        tail = tail->right;
+                    } else {
+                        head = new_link;
+                        tail = new_link;
+                    }
+                }
+            }
+            T * pop ()
+            {
+                DLListItem<T> * cut_link;
+                T * value;
+                tail->excise ();
+                cut_link = tail;
+                tail     = tail->left;
+                if (tail == nullptr)
+                    head = nullptr;
+                value = cut_link->inner;
+                free_dllistitem (cut_link);
+                return value;
+            }
+        };
+
+        template <class T>
+        struct DLList
+        {
+            DLListItem<T> * head;
+
+            void add_as_head (T * x)
+            {
+                DLListItem<T> * new_link = alloc_dllistitem (x);
+                new_link->right          = head;
+                head->left               = new_link;
+                head                     = new_link;
+            }
+            T * remove (DLListItem<T> * x)
+            {
+                x->excise ();
+                T * value = x->inner;
+                if (this->head == x)
+                    this->head == x->right != nullptr ? x->right : x->left;
+                free_dllistitem (x);
+                return value;
+            }
+        };
+
+#define VNZAlloc_DLTapeQueue_RIGHT 0
+#define VNZAlloc_DLTapeQueue_LEFT 1
+        template <class T>
+        struct DLTapeQueue
+        {
+            DLListItem<T> * head;
+
+            template <bool SIDE>
+            void add_as_head (T * x)
+            {
+                DLListItem<T> * new_link = alloc_dllistitem (x);
+                if (head != nullptr) {
+                    if (SIDE == VNZAlloc_DLTapeQueue_RIGHT) {
+                        head->add_right (new_link);
+                    } else {
+                        head->add_left (new_link);
+                    }
+                    head = new_link;
+                } else {
+                    head = new_link;
+                }
+            }
+
+            void add_as_head_right (DLListItem<T> * x)
+            {
+                head->add_right (x);
+            }
+
+            void add_as_head_left (DLListItem<T> * x)
+            {
+                head->add_left (x);
+            }
+
+            T * pop_leftmost ()
+            {
+                DLListItem<T> * leftmost = head->leftmost ();
+                T * value                = leftmost->inner;
+                leftmost->excise ();
+                if (leftmost == head) {
+                    head = head->right;
+                }
+                free_dllistitem (leftmost);
+                return value;
+            }
+
+            T * remove (DLListItem<T> * x)
+            {
+                x->excise ();
+                T * value = x->inner;
+                if (this->head == x)
+                    this->head == x->right != nullptr ? x->right : x->left;
+                free_dllistitem (x);
+                return value;
+            }
+        };
+
+        template <class T>
+        T * allocate_dalt_linkages (math::_usize number)
+        {
+            // use malloc instead of calloc to avoid zeroing the memory, as memory
+            // allocated this way is initialized with placement new anyway
+            return static_cast<T *> (malloc (number * sizeof (T)));
+        }
+
+        /// A "stamped pointer" that takes advantage of the fact that pointers on x86-64
+        /// only ever occupy 48 bits of significant space.
+        /// Stores a 48-bit pointer and a 16-bit integer value.
+        ///
+        /// Designed to store an "objects consumed" count on Block-level free lists.
+        struct TaggedFreelistPtr
+        {
+            union {
+                void * inner;
+                // X86_64 uses lower 48 bits in pointers
+                struct
+                {
+                    math::_uptr tag : 16;
+                    math::_uptr pointer : 48;
+                } segments;
+            };
+
+            /// X86-64 and AMD64 demand that pointers must be in 'canonical' form
+            /// before they may be dereferenced, with threat of a CPU fault.
+            ///
+            /// ``canonical'' form simply means that bits 48:63 must have the same value
+            /// as bit 47.
+            ALWAYS_INLINE void * as_canonical ()
+            {
+                if (0x0000800000000000 & segments.pointer) {
+                    return reinterpret_cast<void *> (
+                        reinterpret_cast<math::_uptr> (inner)
+                        | 0xffff000000000000);
+                } else {
+                    return inner;
+                }
+            }
+
+            /// Intended to be used as ``align_canonical<_u8>'', etc.
+            /// Will take the enclosed pointer as a canonical pointer aligned to the
+            /// type T.
+            template <class T>
+            ALWAYS_INLINE T * align_canonical ()
+            {
+                return static_cast<T> (this->as_canonical ());
+            }
+
+            /// Returns the ``tag'' that the pointer is stamped with.
+            ALWAYS_INLINE math::_u16 get_tag () const
+            {
+                return segments.tag;
+            }
+
+            /// Sets the ``tag'' that the pointer is stamped with.
+            ALWAYS_INLINE void set_tag (math::_u16 new_tag)
+            {
+                segments.tag = new_tag;
+            }
+
+            /// Increment the ``tag'' that the pointer is stamped with (i.e. increase
+            /// its value by 1)
+            ALWAYS_INLINE void inc_tag ()
+            {
+                ++segments.tag;
+            }
+
+            /// Decrement the ``tag'' that the pointer is stamped with (i.e. decrease
+            /// its value by 1)
+            ALWAYS_INLINE void dec_tag ()
+            {
+                --segments.tag;
+            }
+        };
+    };
+
+    struct BlockLinkage;
+
+    /// A data structure describing a region of memory 16 KiB in size.
+    /// We use 16KiB a) because it is 4 times the usual size of a ``page'' of memory
+    /// and b) because it is a rather convenient size for allocative purposes.
     struct Block
     {
+        // +0, +8
         void * range_begin;
+        // +8, +8
         void * freeptr_local;
-        // freeptr_global is only ever modified inside locked segments, so it doesn't need to be atomic
+        // +16, +8
         void * freeptr_global;
 
-        atomic::Atomic<math::_u16> objects_free;
+        // +24, +2
         math::_u16 object_size;
-        math::_u16 object_capacity;
-        UNUSED math::_u8 __padding0[2];
+        // +26, +2
+        math::_u16 object_count;
+        /// __allocation_count is used internally, and at times may not be equal
+        /// to allocation_count. Applications should use allocation_count.
+        /// __allocation_count will be >= allocation_count in all cases.
+        // +28, +2
+        math::_u16 __allocation_count;
+        // +30, +2
+        atomic::Atomic<math::_u16> allocation_count;
 
-        vnz::sys::thread::ID local_thread_id;
-        vnz::sys::sync::Mutex global_lock;
+        // on a 64-bit system, local_thread_id is 8-aligned
+        // +32, +8
+        sys::thread::ID local_thread_id;
+        // on a 64-bit system, __shadow_free is 8-aligned
+        // +40, +8
+        void (*__shadow_free) (Block *);
 
-        void * chain;
+        // +48, +8
+        BlockLinkage * parent;
+        // +56
 
-        Block ();
+        Block (void (*) (Block *) = nullptr);
         ~Block ();
 
-        void assign (void *);
-        void assign_chain (void *);
-        void format (math::_u16 const);
+        /// Allocate an object from a Block.
+        /// Will first try to pull the object from the local free list, but if
+        /// this is not possible, then it will copy the global free list into the
+        /// local free list.
+        /// If the local free list remains empty, then a nullptr will be returned.
+        ///
+        /// This method will lock the global free list if need be.
+        /// If an object can be allocated, the ``objects_consumed'' variable will
+        /// be incremented as is appropriate
+        void * request_allocation ();
 
-        void * alloc_object ();
-        void dealloc_object (void *);
+        void * request_allocation_from_local_list ();
 
-        void * alloc_object_local ();
+        /// Deallocate an object in this Block.
+        /// No checking is performed to see if the object actually belongs to this
+        /// Block, and the behaviour of this method is undefined if the object is
+        /// not in the region of memory marked by this Block.
+        ///
+        /// If the thread deallocating the object is the thread that owns the Block,
+        /// then the object will be returned to the local free list without locking
+        /// the global free list.
+        /// Otherwise, the object will be returned to the global free list, with
+        /// the accompanying locking of said list.
+        void request_deallocation (void * block_to_deallocate);
+
+        /// This method is called by ``request_deallocation'' if the deallocation
+        /// makes the Block empty enough that ``Metric::is_empty_enough(object_size: _usize)''
+        /// returns true.
+        ///
+        /// It will call the ``hook_block_is_empty_enough(Block *)'' method on
+        /// the owning chain of this Block.
+        void hook_is_empty_enough ();
+
+        /// This method is called by ``request_deallocation'' if the deallocation
+        /// makes the Block completely empty, i.e. ``objects_consumed'' has a value
+        /// of 0.
+        ///
+        /// It will call the ``hook_block_is_empty(Block *)'' method on the owning
+        /// chain of this Block.
+        ///
+        /// @TODO: Figure out what to do in the case that a foreign deallocator
+        /// calls and the owning thread simultaneously allocates, creating a
+        /// situation where the block is no longer empty, invalidating the condition.
+        ///     >> solution: high-bit objects-consumed on freelist pointers
+        void hook_is_empty ();
+
+        /// Assign a range of contiguous memory to the BLock. If the memory is
+        /// owned by any other Block, then the results of all of this Block's methods
+        /// become undefined.
+        void assign_memory_range (void * range_beginning);
+
+        /// Sets up the free lists within the memory owned by the Block.
+        /// Uses objects of size ``object_size''.
+        Block * format (math::_u16 const object_size);
     };
 
-    template <class T>
-    struct DLListItem
+    struct DeallocationLookupTable
     {
-        DLListItem<T> * left;
-        DLListItem<T> * right;
-        T * inner;
-
-        DLListItem (T * x)
-            : left { nullptr }
-            , right { nullptr }
-            , inner { x }
-        {}
-        DLListItem (DLListItem<T> * left, DLListItem<T> * right, T * x)
-            : left { left }
-            , right { right }
-            , inner { x }
-        {}
+        virtual Block * find_block_for_object (void * object) = 0;
     };
 
+    /// A region of memory enclosing 64 Blocks, i.e. with a size of 1 MiB (1024 KiB).
+    /// Chunks are used to allocate memory from the OS instead of Blocks because
+    /// of the way the Chunk table works: if the table was instead a Block table,
+    /// as would be necessary if Blocks were allocated individually, then it would
+    /// need to be granular to 4KiB, and would either a) take up 64 times as much
+    /// memory as an equivalent Chunk Table or b) have longer internal linkage;
+    /// this forces a tradeoff between deallocator performance and memory usage.
+    /// On an average computer with 8GiB of physical RAM, a table of 8192-slot
+    /// table would probably serve well enough (8 * 1024 Chunks = 8 * 1024 MiB)
+    /// taking up 192 KiB of RAM (assuming 8192 ``DLListItem''s, each of which has
+    /// 3 8-byte pointers), but a Block table of equivalent granularity would
+    /// occupy 12 MiB, which, at the size of 12 Chunks, is completely unacceptable
+    /// for some applications. Given the "dividing-line" system, that size doubles
+    /// to 24 MiB.
+    ///
+    /// The downside, of course, to chunk-based allocation is that deallocations,
+    /// i.e. returning ``Chunk''s to the OS, is difficult, becuase in order for
+    /// a Chunk to be returned, then all of its component Blocks must be free.
+    ///
+    /// For that reason, we abstract the deallocation mechanism so that it may
+    /// be used with either system.
     struct Chunk
     {
         void * range_begin;
-        Block blocks[64];
-        atomic::Atomic<math::_u64> used_blocks;
+        union {
+            Block blocks[64];
+        };
+        math::_u64 block_availability;
+        sys::sync::Mutex chunk_lock;
 
+        // Allocate 1 MiB of memory.
         Chunk ();
         ~Chunk ();
+
+        /// Will return an empty Block if one is available.
+        /// Otherwise, a nullptr will be returned.
+        Block * request_block_if_available ();
+
+        /// Given an object, will return the Block from which ``object'' came, if
+        /// and only if that Block originated in this Chunk.
+        /// If the above condition is not met, then the behaviour of this method
+        /// is undefined.
+        Block * find_block_for_object (void * object);
     };
 
-    struct ChunkChain
+    struct ChunkLinkage
     {
-        DLListItem<Chunk> head;
-        sys::sync::RwLock chain_lock;
+        internal::DLList<Chunk> chunks;
+        sys::sync::Mutex linkage_lock;
 
-        ChunkChain ();
-        ~ChunkChain ();
+        ChunkLinkage ();
+        ~ChunkLinkage ();
 
-        Chunk * find_chunk (void *);
+        Chunk * find_chunk_for_object (void * object);
         void add_chunk (Chunk *);
         Chunk * remove_chunk (Chunk *);
     };
 
     struct ChunkTable
+        : public DeallocationLookupTable
     {
-        ChunkChain * chains;
+        ChunkLinkage * linkages;
         const math::_usize hash_slots;
 
-        ChunkTable (const math::_usize);
+        ChunkTable (const math::_usize slots);
         ~ChunkTable ();
 
-        ALWAYS_INLINE math::_usize slot_hash (void * addr) const
+        ALWAYS_INLINE math::_usize slot_hash (void * object) const
         {
-            return (reinterpret_cast<math::_usize> (addr) >> 20) % this->hash_slots;
-        };
+            return (reinterpret_cast<math::_usize> (object) >> 20) % this->hash_slots;
+        }
+        ALWAYS_INLINE Chunk * find_chunk_for_object (void * object) const
+        {
+            return this->linkages[this->slot_hash (object)].find_chunk_for_object (object);
+        }
+
+        // magic: using virtual to speed up compilation time
+        virtual Block * find_block_for_object (void * object);
 
         void add_chunk (Chunk *);
         Chunk * remove_chunk (Chunk *);
-        ALWAYS_INLINE Chunk * find_chunk_by_addr (void * addr) const
-        {
-            return this->chains[this->slot_hash (addr)].find_chunk (addr);
-        }
     };
 
-    struct Heap;
+    struct DeallocationBlockLinkage
+    {
+        internal::DLList<Block> blocks;
+        sys::sync::Mutex linkage_lock;
+
+        DeallocationBlockLinkage ();
+        ~DeallocationBlockLinkage ();
+
+        Block * find_block_for_object (void * object);
+        void add_block (Block *);
+        Block * remove_block (Block *);
+    };
+
+    struct BlockTable
+        : public DeallocationLookupTable
+    {
+        DeallocationBlockLinkage * linkages;
+        const math::_usize hash_slots;
+
+        BlockTable (const math::_usize slots);
+        ~BlockTable ();
+
+        ALWAYS_INLINE math::_usize slot_hash (void * object) const
+        {
+            return (reinterpret_cast<math::_usize> (object) >> 14) % this->hash_slots;
+        }
+        virtual Block * find_block_for_object (void * object);
+    };
 
     struct Metric;
+    struct Heap;
 
-    struct BlockChain
+    struct BlockLinkage
     {
-        DLListItem<Block> head;
-        Heap * parent;
-        sys::sync::Mutex chain_lock;
         Metric * metric;
 
-        BlockChain (Heap *);
-        ~BlockChain ();
-
-        // Called by Block::dealloc_object() when a block is emptied
-        virtual void block_empty (Block *) = 0;
+        virtual void hook_block_is_empty (Block *)        = 0;
+        virtual void hook_block_is_empty_enough (Block *) = 0;
     };
 
-    struct SizedBlockChain
-        : public BlockChain
+    struct BlockAllocationLinkage
+        : public BlockLinkage
     {
+        sys::sync::Mutex bal_lock;
+        Heap * parent;
+        internal::DLListItem<Block> * head;
+        atomic::Atomic<math::_u64> empties;
         const math::_u16 object_size;
-        atomic::Atomic<math::_usize> left_length;
-        atomic::Atomic<math::_usize> right_length;
 
-        SizedBlockChain (const math::_u16, Heap *);
-        // Frees all held blocks to the parent chain
-        ~SizedBlockChain ();
+        BlockAllocationLinkage (Metric *, math::_u16 const);
+        ~BlockAllocationLinkage ();
 
-        void * alloc_object ();
-        // Called when the head is full
-        Block * needs_block ();
-        void block_empty (Block *);
-        // Adds as head, shifts existing HEAD to the left
-        void add_as_head (Block *);
+        virtual void hook_block_is_empty (Block *);
+        virtual void hook_block_is_empty_enough (Block *);
+
+        void * allocate_from_linkage ();
     };
 
-    struct UnsizedBlockChain
-        : public BlockChain
+    struct UnsizedReclamationLinkage
+        : public BlockLinkage
     {
-        DLListItem<Block> * tail;
-        sys::sync::Mutex tail_lock;
+        sys::sync::Mutex rl_lock;
+        Heap * parent;
+        internal::DLListItem<Block> * head;
+        atomic::Atomic<math::_u64> length;
 
-        atomic::Atomic<math::_usize> length;
+        UnsizedReclamationLinkage (Metric *);
+        ~UnsizedReclamationLinkage ();
 
-        UnsizedBlockChain (Heap *);
-        ~UnsizedBlockChain ();
-
-        void push (Block *);
-        Block * pop ();
-
-        // Impossible; block must be empty before going to a UBC
-        ALWAYS_INLINE void block_empty (Block *) {}
+        virtual void hook_block_is_empty (Block *);
+        virtual void hook_block_is_empty_enough (Block *);
+        virtual Block * hook_child_requesting_block ();
     };
 
     struct Heap
     {
-        virtual Block * request_block ()            = 0;
-        virtual void handle_free_block (Block *)    = 0;
-        virtual void reclaim_filled_block (Block *) = 0;
+        virtual void hook_block_is_empty (Block *);
+
+        virtual Block * hook_child_requesting_block (math::_u16 const);
+        virtual void hook_child_recycling_block (Block *);
     };
 
-    struct LSHeap
+    // LocalAllocatingHeap is the exclusive heap that a thread will allocate from
+    // RegionalUnsizedReclamationHeap is an intermediate unformatted heap that
+    //  LocalAllocatingHeaps may pull Blocks from
+    // RegionalSizedReclamationHeap is a multi-thread formatted heap that collects
+    //  Blocks from dying LocalAllocatingHeaps
+    // GlobalSlabAllocatingHeap is a global non-formatted heap that actually allocates Blocks
+
+    struct LocalAllocatingHeap
+        : public Heap
     {
+        // No default constructor
+        union {
+            BlockAllocationLinkage linkages[20];
+        };
+
+        Heap * parent_unsized;
+        Heap * parent_sized;
+
+        Metric * metric;
+
+        sys::sync::Mutex lah_lock;
+
+        LocalAllocatingHeap (Metric *);
+        ~LocalAllocatingHeap ();
+
+        void * allocate (math::_u16 const);
+
+        // for propagating surplus empty blocks
+        virtual void hook_block_is_empty (Block *);
+        virtual Block * hook_child_requesting_block (math::_u16 const);
+        // for evacuating blocks from dying threads
+        virtual void hook_child_recycling_block (Block *);
     };
 
     struct Metric
     {
-        math::_usize left_trim () const;
-        math::_usize right_trim () const;
-        math::_usize trim () const;
+        //! maximum no. of allocations allowed to be considered "sufficiently empty"
+        //! currently fixed at 25%
+        math::_u16 metric_block_sufficient_emptiness (Block *);
+        math::_u64 metric_block_allocation_linkage_max_empties (BlockAllocationLinkage *);
     };
+
 }
 
-#endif /* !@__VNZ_ALLOC_ALLOC */
+#endif /* !@__VNZ_ALLOC */

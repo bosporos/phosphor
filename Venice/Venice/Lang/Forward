@@ -11,7 +11,7 @@
 #include <Venice/Compiler>
 #include <Venice/Lang/Dequalify>
 
-namespace Venice {
+namespace vnz {
     template <typename T>
     ALWAYS_INLINE constexpr T && Forward (
         typename vnz::RemoveReference<T>::type & x)

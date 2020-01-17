@@ -8,7 +8,7 @@
 #ifndef __VNZ_LANG_DEQUALIFY
 #define __VNZ_LANG_DEQUALIFY
 
-namespace Venice {
+namespace vnz {
     template <typename T>
     struct RemoveReference
     {
