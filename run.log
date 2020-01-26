@@ -1,0 +1,88 @@
+REXPaint v1.04
+
+I=0000048 Initializing resources
+W=0000954 Config::init() | Unable to open REXPaint.cfg, creating new default config
+I=0001007 Initializing Rogue Engine X
+I=0001007 |   Starting SDL
+I=0002302 |   Importing icon
+E=0002303 |   REX_Init() | Application icon "rex/icon.png" not found, this program may not be installed correctly!
+I=0002303 |   Confirmed resource initialization
+I=0002303 |   Loading colors
+I=0002303 |   Initializing font type data
+I=0002303 |   Mapping standard ASCII values
+I=0002303 |   Loading fonts
+I=0002429 |   |   [font set: CP437 12x12]
+I=0002458 |   |   ...cp437_12x12.png
+I=0002462 |   |   ...cp437_12x12.png
+I=0002494 |   |   [font set: CP437 14x14]
+I=0002498 |   |   ...cp437_14x14.png
+I=0002503 |   |   ...cp437_14x14.png
+I=0002503 |   |   [font set: CP437 16x16]
+I=0002510 |   |   ...cp437_16x16.png
+I=0002516 |   |   ...cp437_16x16.png
+I=0002516 |   |   [font set: CP437 18x18]
+I=0002523 |   |   ...cp437_18x18.png
+I=0002529 |   |   ...cp437_18x18.png
+I=0002529 |   |   [font set: CP437 20x20]
+I=0002631 |   |   ...cp437_20x20.png
+I=0002638 |   |   ...cp437_20x20.png
+I=0002638 |   |   [font set: CP437 8x8]
+I=0002640 |   |   ...cp437_8x8.png
+I=0002644 |   |   ...cp437_8x8.png
+I=0002644 |   |   [font set: CP437 10x10]
+I=0002646 |   |   ...cp437_10x10.png
+I=0002649 |   |   ...cp437_10x10.png
+I=0002649 |   \---DONE
+I=0003877 |   Setting video mode
+I=0003882 |   Initializing audio
+I=0009497 |   Creating console
+I=0009499 \---DONE
+I=0009541 RP::initialize() | Initializing program
+I=0009541 |   Mapping font glyphs
+I=0009541 |   Creating game consoles
+I=0009542 |   CProgram() | Creating CProgram
+I=0009542 |   |   Initializing input domains and commands
+I=0009542 |   |   Loading inline colors
+I=0009542 |   \---DONE
+I=0009542 |   Creating top-level consoles
+I=0009542 |   ...CPaint
+I=0009545 |   Loading palette: Palette
+I=0009551 |   ...CBrowse
+I=0009553 |   ...CCanvas
+I=0009555 |   ...CPicker
+I=0009556 |   ...CFilename
+I=0009556 |   ...CResize
+I=0009556 |   ...CConfirm
+I=0009556 |   ...COptions
+I=0009556 |   ...CCommands
+I=0009557 |   ...CMessage
+I=0009557 |   ...CMessage 2
+I=0009558 |   Http::newsCheck() | Checking version and retrieving news
+I=0009558 \---DONE
+I=0009558 |   Resolving address...
+I=0009558 |   Starting REX loop
+I=0009577 |   Connecting...
+I=0009578 |   Sending content...
+I=0009578 |   Waiting for ACK...
+I=0020085 |   Got 586 bytes: HTTP/1.1 400 Bad Request
+Date: Fri, 24 Jan 2020 22:52:25 GMT
+Server: Apache
+Content-Length: 420
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>400 Bad Request</title>
+</head><body>
+<h1>Bad Request</h1>
+<p>Your browser sent a request that this server could not understand.<br />
+</p>
+<p>Additionally, a 400 Bad Request
+error was encountered while trying to use an ErrorDocument to handle the request.</p>
+<hr>
+<address>Apache Server at gator3085.hostgator.com Port 80</address>
+</body></html>
+
+E=0020086 |   Http::newsCheck() | POST failed
+E=0180409 |   CArt::save() | Unable to open file for saving: images/unname.xp
