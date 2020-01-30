@@ -47,8 +47,6 @@ include (cmake/venice-build/config.cmake)
 
 vnz_file("venice/venice.cc")
 
-vnz_file("venice/alloc/alloc.cc")
-
 vnz_file("venice/sys/pthread-base/sync/mutex.cc")
 vnz_file("venice/sys/pthread-base/sync/condvar.cc")
 vnz_file("venice/sys/pthread-base/sync/rwlock.cc")
@@ -62,6 +60,8 @@ vnz_file("venice/arch/x86-64/string/utility.s")
 
 vnz_file("venice/range/range.cc")
 
+vnz_file("venice/alloc/alloc.cc")
+vnz_file("venice/alloc/alloc.c")
 vnz_file("venice/alloc/alloc_routines.s")
 
 # LIBRARIES

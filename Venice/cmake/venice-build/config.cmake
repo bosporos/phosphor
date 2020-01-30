@@ -32,7 +32,7 @@ else()
 endif()
 
 set(vnz_flags_global_cxx "")
-set(vnz_flags_global_c "")
+set(vnz_flags_global_c "-std=gnu11")
 set(vnz_flags_global_asm "")
 
 if(${phos_build_type} STREQUAL Debug)

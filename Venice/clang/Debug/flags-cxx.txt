@@ -3,3 +3,4 @@
 
 -std=c++2a
 -Wno-literal-suffix
+-fconcepts

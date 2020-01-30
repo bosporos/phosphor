@@ -8,13 +8,13 @@
 #ifndef __VNZ_ALLOC
 #define __VNZ_ALLOC
 
-#include <venice/Compiler>
-#include <venice/math/Integers>
-#include <venice/sys/thread/ID>
-#include <venice/sys/sync/Mutex>
+#include <Venice/Compiler>
+#include <Venice/Math/Integers>
+#include <Venice/Sys/Thread/ID>
+#include <Venice/Sys/Sync/Mutex>
 // #include <venice/sys/sync/RwLock>
-#include <venice/atomic/Atomic>
-#include <venice/Alloc/Internals>
+#include <Venice/Atomic/Atomic>
+#include <Venice/Alloc/Internals>
 
 #define __VNZA_PADDING_BYTES(n)                    \
     union {                                        \
@@ -40,6 +40,7 @@ namespace vnz::alloc {
         void (*_shadow_free) (Block *);
 
         /* __atomic */ ActiveBlockLinkage * active_linkage;
+        /* __atomic */ bool _is_head;
 
         Block (void * memory = nullptr, void (*shadow_free) (Block *) = nullptr);
         ~Block ();
@@ -65,7 +66,6 @@ namespace vnz::alloc {
     struct ActiveBlockLinkage
     {
         Metric * metric;
-        /* __atomic */ detail::Item<Block> * linkage_head;
 
         ActiveBlockLinkage (Metric * metric);
 
@@ -84,6 +84,7 @@ namespace vnz::alloc {
         // however, atomicity only applies to linkage_head->inner here
         // this is because Block::hook_informs_block_of_deallocation_request needs
         // to be able to check if it is a head block or not
+        /* __atomic */ detail::Item<Block> * linkage_head;
         sys::sync::Mutex linkage_lock;
         atomic::Atomic<math::_u64> count_of_empty_blocks;
         const math::_u16 object_size;
@@ -103,6 +104,7 @@ namespace vnz::alloc {
     struct ActiveRegionalLinkage
         : public ActiveBlockLinkage
     {
+        detail::Item<Block> * linkage_head;
         sys::sync::Mutex linkage_lock;
         atomic::Atomic<math::_u64> count_of_blocks;
         const math::_u16 object_size;
@@ -139,6 +141,7 @@ namespace vnz::alloc {
         ~LocalHeap ();
 
         virtual void hook_linkage_informs_heap_of_empty_block (Block * block);
+        // note from ActiveLocalLinkage: may be allocation-locked
         virtual void hook_linkage_informs_heap_of_propagating_block (Block * block);
         void * hook_thread_informs_heap_of_allocation_request ();
     };

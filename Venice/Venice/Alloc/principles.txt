@@ -1,0 +1,58 @@
+for simplicity, we're moving to local-global obly
+
+malloc(sz)
+    retrieve local thread's heap
+    if sz < heap's largest linkage size:
+        retrieve local thread's heap's linkage as appropriate for sz
+        if trying to allocate from the linkage's head works:
+            return the allocated object
+        else:
+            lock the linkage
+            if there are blocks to the right of the linkage's head:
+                repoint the linkage's head one to the right
+                -- guaranteed to succeed, because you only get to the right of the head if empty-enough
+                allocate an object from the new head
+            else:
+                lock the local heap's empty-size linkage
+                if the local heap's empty-size linkage has any blocks:
+                    remove a block from the local heap's empty-size linkage
+                    unlock the local heap's empty-size linkage
+                    put the block from the local heap's empty-size linkage to the right of the head
+                    repoint the linkage's head one to the right
+                    -- guaranteed to succeed, because the block is completely empty
+                    allocate an object from the new head
+                else:
+                    unlock the local heap's empty-size linkage
+                    lock the global heap
+                    -- ...
+                    unlock the global heap
+            unlock the linkage
+            return the allocated object
+    else:
+        pass it through to the operating system
+
+dealloc(obj)
+    if obj in deallocation table:
+        find obj's block
+        deallocate obj
+        if the block becomes empty and the block is not head block:
+            lock the linkage
+            remove the block from the linkage
+            unlock the linkage
+            if there are less than X blocks in the local heap's empty-size linkage:
+                lock the empty-size linkage
+                add the block to the empty-size linkage
+                unlock the empty-size linkage
+            else:
+                lock the global empty-size linkage
+                add the block to the global empty-size linkage
+                unlock global empty-size linkage
+        if the block becomes less than Y percent filled and is not the head block:
+            lock the linkage
+            if there are less than Z empty-enough blocks in the linkage:
+                move it to the right of the head block
+            else:
+                pass it to the global heap
+            unlock the linkage
+    else
+        pass it through to the operating system

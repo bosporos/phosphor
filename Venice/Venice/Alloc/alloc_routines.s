@@ -1,11 +1,11 @@
-.globl ___vnz_chain_lookup
+.globl ___vnza_chain_lookup
 
 #include <Venice/Platform.h>
 #if CPU(X86_64)
 
-// __vnz_chain_lookup(u64 size) : i64 index
+// __vnza_chain_lookup(u64 size) : i64 index
 // rdi = size
-___vnz_chain_lookup:
+___vnza_chain_lookup:
     // sets zero flag if %rdi is 0
     bsrq %rdi, %rax
     // size = 0 so error -1
@@ -20,7 +20,7 @@ ___vnz_chain_lookup:
     // because BT takes index mod operand size, -1u mod 64 = 63 is the MSB,
     // which will be 0 anyway ('cuz MSBI = 0 anyway), so it's okay not to treat
     // the edge case here
-    
+
     // if second-most significant bit is set, CF is set
     btq %rax, %rdi
     // use 0 -> rax instead of rax xor rax -> rax because we need to preserve CF
