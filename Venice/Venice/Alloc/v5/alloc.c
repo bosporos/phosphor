@@ -44,7 +44,9 @@ uint64_t __vnza_lut_index (void * object, struct __vnza_lut * lut)
 
 int __vnza_add_item_to_linkage (struct __vnza_item * item, struct __vnza_linkage * linkage)
 {
-    pthread_mutex_lock (&linkage->lock);
+    // @TODO linkage->head accesses should be atomic and sll
+    // left -> righgt
+    // pthread_mutex_lock (&linkage->lock);
     if (linkage->head != NULL) {
         item->left           = linkage->head;
         linkage->head->right = item;
@@ -56,7 +58,7 @@ int __vnza_add_item_to_linkage (struct __vnza_item * item, struct __vnza_linkage
         item->left    = NULL;
         item->right   = NULL;
     }
-    pthread_mutex_unlock (&linkage->lock);
+    // pthread_mutex_unlock (&linkage->lock);
 }
 
 void __vnza_add_to_lut (struct __vnza_block * block, struct __vnza_lut * lut)
@@ -353,13 +355,13 @@ void __vnza_dealloc_block (void * object)
     uint64_t linkage_index       = __vnza_lut_index (object, lut);
     struct __vnza_item * current = lut->linkages[linkage_index];
     uintptr_t addr               = (uintptr_t)object;
-    if (current != NULL) {
+    while (current != NULL) {
         if ((addr - current->inner->__range_begin) < 0x4000ull) {
             __vnza_dealloc_from_block (object, current->inner);
             return;
         } else
             current = current->right;
-    } else {
-        __vnza_backup_free (object);
     }
+
+    __vnza_backup_free (object);
 }
