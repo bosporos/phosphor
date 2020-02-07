@@ -25,7 +25,12 @@ Block::Block ()
 {}
 
 Block::~Block ()
-{}
+{
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("Block dead: %p (%p)\n", this, this->state_change_responder);
+    fflush (stdout);
+#endif
+}
 
 InvocationResult Block::hook_linkage_informs_block_of_allocation_request (void ** object)
 {

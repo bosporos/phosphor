@@ -15,24 +15,26 @@ using namespace vnz::alloc;
 
 struct __vnza_align4k_helper
 {
-    math::_u64 __padding[0x800];
-};
-struct __vnza_align128_helper
-{
-    math::_u64 __padding[16];
+    math::_u8 __padding0[0x4000];
 };
 
 InvocationResult GH::hook_heap_informs_heap_of_block_request (OSize os, Block ** block)
 {
     void * _memory;
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+    printf ("GH block request %hu (%p)\n", os, this);
+#endif
     if (0 != posix_memalign (&_memory, 0x100000, 0x100000)) {
         // panic
         return IR_FAIL;
     }
+#if __VNZA_DEBUG_GH_ALLOCATIONS
+    printf ("-> [GH] allocated chunk: %p\n", _memory);
+#endif
 
     // align it to 0x4000
-    __vnza_align4k_helper * _block_align   = static_cast<__vnza_align4k_helper *> (_memory);
-    __vnza_align128_helper * _header_align = static_cast<__vnza_align128_helper *> (_memory);
+    __vnza_align4k_helper * _block_align = static_cast<__vnza_align4k_helper *> (_memory);
+    Block * _header_align                = static_cast<Block *> (_memory);
 
     // first 0x4000 is reserved for Block headers
     ++_block_align;
@@ -46,12 +48,12 @@ InvocationResult GH::hook_heap_informs_heap_of_block_request (OSize os, Block **
 
     // Initialize the block_headers
     Block * _block;
-    for (math::_i32 i = 1; i < 64; i++) {
-        _block              = new (reinterpret_cast<Block *> (_header_align)) Block;
-        _block->range_begin = _block_align;
-
-        ++_block_align;
-        ++_header_align;
+    for (math::_i32 i = 0; i < 63; i++) {
+        _block              = new (&_header_align[i]) Block;
+        _block->range_begin = static_cast<void *> (&_block_align[i]);
+#if __VNZA_DEBUG_GH_BLOCK_PLACEMENT
+        printf ("--> [GH] block (%p) => %p\n", _block, _block->range_begin);
+#endif
     }
 
     *block = _block;
@@ -99,4 +101,9 @@ GH::~GH ()
         free (chunk);
         chunk = next;
     }
+
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("GH %p dying\n", this);
+    fflush (stdout);
+#endif
 }

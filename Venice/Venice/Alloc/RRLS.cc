@@ -15,27 +15,43 @@ RRLS::RRLS ()
 
 RRLS::~RRLS ()
 {
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("RRLS dying: %p (%p)\n", this, this->rlh_heap);
+    fflush (stdout);
+#endif
+
     rrls_lock.lock ();
     __atomic_store_n (&rrls_length, 0, __ATOMIC_RELEASE);
-    Block * block = rrls_head->l_right;
-    while (block != nullptr) {
-        static_cast<RH *> (this->rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (block);
-        block = block->l_right;
+    if (rrls_head != nullptr) {
+        Block * block = rrls_head->l_right;
+        while (block != nullptr) {
+            static_cast<RH *> (this->rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (block);
+            block = block->l_right;
+        }
+        block = rrls_head->l_left;
+        while (block != nullptr) {
+            static_cast<RH *> (this->rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (block);
+            block = block->l_left;
+        }
+        static_cast<RH *> (this->rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (rrls_head);
     }
-    block = rrls_head->l_left;
-    while (block != nullptr) {
-        static_cast<RH *> (this->rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (block);
-        block = block->l_left;
-    }
-    static_cast<RH *> (this->rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (rrls_head);
     rrls_lock.unlock ();
 }
 
 InvocationResult RRLS::hook_heap_informs_linkage_of_block_request (OSize os, Block ** block)
 {
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+    printf ("RRLS block request %hu (%p) => [L%p , H%p]\n", os, this, __atomic_load_n (&rrls_length, __ATOMIC_ACQUIRE), rrls_head);
+#endif
     if (__atomic_load_n (&rrls_length, __ATOMIC_ACQUIRE) > 0) {
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+        printf ("-> [RRLS] length sufficient!\n");
+#endif
         rrls_lock.lock ();
         if (__atomic_load_n (&rrls_length, __ATOMIC_ACQUIRE) > 0) {
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+            printf ("-> [RRLS] length sufficient, post-lock!\n");
+#endif
             __atomic_sub_fetch (&rrls_length, 1, __ATOMIC_ACQ_REL);
             *block = rrls_head;
             (*block)->globalfree_lock.lock ();
@@ -100,7 +116,7 @@ InvocationResult RRLS::hook_block_informs_linkage_of_empty_state (Block * invoke
         invoker->l_right->l_left = invoker->l_left;
     // will never be head
     rrls_lock.unlock ();
-    return dynamic_cast<RH__LPropagator *> (this->rlh_heap)->hook_linkage_informs_heap_of_surplus_block (invoker);
+    return this->rlh_heap->hook_linkage_informs_heap_of_surplus_block (invoker);
 }
 
 InvocationResult RRLS::hook_block_informs_linkage_of_empty_enough_state (Block * invoker)

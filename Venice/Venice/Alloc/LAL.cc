@@ -16,26 +16,38 @@ LAL::LAL ()
 
 LAL::~LAL ()
 {
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("LAL dying(%hu): %p-- blocks being sent to %p\n", lal_osize, this, this->rlh_heap);
+    fflush (stdout);
+#endif
+
     lal_lock.lock ();
     Block *cphase_active = __atomic_exchange_n (&lal_active, nullptr, __ATOMIC_ACQ_REL), *current;
+    if (cphase_active != nullptr) {
 
-    current = cphase_active->l_left;
-    while (current != nullptr) {
-        current->globalfree_lock.lock ();
-        static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (current);
-        current = current->l_left;
+        current = cphase_active->l_left;
+        while (current != nullptr) {
+            current->globalfree_lock.lock ();
+            static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (current);
+            current = current->l_left;
+        }
+        current = cphase_active->l_right;
+        while (current != nullptr) {
+            current->globalfree_lock.lock ();
+            static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (current);
+            current = current->l_right;
+        }
+        cphase_active->globalfree_lock.lock ();
+        __atomic_store_n (&cphase_active->block_state, Inactive, __ATOMIC_RELEASE);
+        static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (cphase_active);
     }
-    current = cphase_active->l_right;
-    while (current != nullptr) {
-        current->globalfree_lock.lock ();
-        static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (current);
-        current = current->l_right;
-    }
-    cphase_active->globalfree_lock.lock ();
-    __atomic_store_n (&cphase_active->block_state, Inactive, __ATOMIC_RELEASE);
-    static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (cphase_active);
 
     lal_lock.unlock ();
+
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("LAL dead: %p (%p)\n", this, this->rlh_heap);
+    fflush (stdout);
+#endif
 }
 
 InvocationResult LAL::hook_block_informs_linkage_of_empty_state (Block * invoker)

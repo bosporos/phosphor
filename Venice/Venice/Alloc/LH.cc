@@ -5,6 +5,8 @@
 
 #include <Venice/Alloc/Alloc>
 
+#include <new>
+
 namespace math = vnz::math;
 using namespace vnz::alloc;
 
@@ -15,23 +17,39 @@ extern "C"
 }
 
 LH::LH ()
-// default constructors
 {
+    // 0x18 = 16 + 8 = 24
+    const OSize sizes[] = { 2, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096 };
     for (math::_i32 i = 0; i < __VNZA_SL_NUMBER; i++) {
-        lal_table[i].rlh_heap = this;
+        new (&lal_table[i]) LAL;
+        lal_table[i].rlh_heap  = this;
+        lal_table[i].lal_osize = sizes[i];
     }
+    new (&lrl) LRL;
     lrl.rlh_heap = this;
 }
 
 LH::~LH ()
 {
-    dynamic_cast<RH__Parent *> (this->rhh_parent)->hook_heap_informs_heap_of_heap_death ();
+    for (math::_i32 i = 0; i < __VNZA_SL_NUMBER; i++) {
+        lal_table[i].LAL::~LAL ();
+    }
+    lrl.LRL::~LRL ();
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("LH %p dying; invoking parent %p heap death\n", this, this->rhh_parent);
+    fflush (stdout);
+#endif
+    this->rhh_parent->hook_heap_informs_heap_of_heap_death ();
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("LH %p dead\n", this);
+    fflush (stdout);
+#endif
 }
 
 InvocationResult LH::hook_linkage_informs_heap_of_surplus_block (Block * block)
 {
     if (__atomic_load_n (&lrl.lrl_length, __ATOMIC_ACQUIRE) > __VNZA_LRL_CAP) {
-        return dynamic_cast<RH *> (this->rhh_parent)->hook_heap_informs_heap_of_surplus_block (block);
+        return this->rhh_parent->hook_heap_informs_heap_of_surplus_block (block);
     } else {
         return lrl.hook_heap_informs_linkage_of_migrating_block (block);
     }
@@ -40,14 +58,24 @@ InvocationResult LH::hook_linkage_informs_heap_of_surplus_block (Block * block)
 InvocationResult LH::hook_linkage_informs_heap_of_evacuating_block (Block * block)
 {
     // LH needs to pass directly up to RH; LH isn't going to last, but the RRH might
-    return dynamic_cast<RH__HPropagator *> (this->rhh_parent)->hook_heap_informs_heap_of_evacuating_block (block);
+    return this->rhh_parent->hook_heap_informs_heap_of_evacuating_block (block);
 }
 
 InvocationResult LH::hook_linkage_informs_heap_of_block_request (OSize os, Block ** block)
 {
-    if (IR_OK == lrl.hook_heap_informs_linkage_of_block_request (os, block))
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+    printf ("LH block request (%p)\n", this);
+#endif
+    if (IR_OK == lrl.hook_heap_informs_linkage_of_block_request (os, block)) {
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+        printf ("-> [LH] LRL (%p) request successful (%p)\n", &lrl, *block);
+#endif
         return IR_OK;
-    return dynamic_cast<RH__HBlockRequest *> (this->rhh_parent)->hook_heap_informs_heap_of_block_request (os, block);
+    }
+#if __VNZA_DEBUG_TRACE_BLOCK_REQUEST
+    printf ("-> [LH] trying parent (%p)\n", rhh_parent);
+#endif
+    return this->rhh_parent->hook_heap_informs_heap_of_block_request (os, block);
 }
 
 InvocationResult LH::hook_client_informs_heap_of_allocation_request (OSize os, void ** object)

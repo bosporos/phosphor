@@ -14,6 +14,12 @@
 #include <Venice/Sys/Thread/ID>
 #include <Venice/Atomic/Atomic>
 
+#define __VNZA_DEBUG_EVAC_LUTI 1
+#define __VNZA_DEBUG_TRACE_BLOCK_REQUEST 1
+#define __VNZA_DEBUG_GH_ALLOCATIONS 1
+#define __VNZA_DEBUG_GH_BLOCK_PLACEMENT 0
+#define __VNZA_DEBUG_DESTRUCTION 0
+
 namespace vnz::alloc {
     enum InvocationResult {
         IR_OK,
@@ -85,8 +91,15 @@ namespace vnz::alloc {
         virtual InvocationResult hook_heap_informs_linkage_of_migrating_block (Block * block)            = 0;
     };
 
+    struct RH;
+
     struct RH__Hierarchical
     {
+        virtual InvocationResult hook_heap_informs_heap_of_block_request (OSize os, Block ** block) = 0;
+        virtual InvocationResult hook_heap_informs_heap_of_heap_death ()                            = 0;
+        virtual InvocationResult hook_heap_informs_heap_of_surplus_block (Block * block)            = 0;
+        virtual InvocationResult hook_heap_informs_heap_of_evacuating_block (Block * block)         = 0;
+
         RH__Hierarchical * rhh_parent;
     };
 
@@ -106,15 +119,16 @@ namespace vnz::alloc {
     struct LH;
 
     struct LAL
-        : public RL__EEState_EState,
-          public RL__Hierarchical
+        : public RL__EEState_EState
+    // , public RL__Hierarchical
     {
-        OSize lal_osize;
-        UNUSED math::_u16 __padding1[3];
+        // UNUSED math::_u16 __padding1[3];
         /* dll bi; search only sll. remove,add only dll */
         /* dll bi-headwise wise __atomic */
         /* __atomic */ Block * lal_active;
         sys::sync::Mutex lal_lock;
+        LH * rlh_heap;
+        OSize lal_osize;
 
         LAL ();
         ~LAL ();
@@ -127,13 +141,14 @@ namespace vnz::alloc {
 #define __VNZA_LRL_CAP 4
 
     struct LRL
-        : public RL__BlockCache,
-          public RL__Hierarchical
+        : public RL__BlockCache
+    // , public RL__Hierarchical
     {
         /* sll right */
         Block * lrl_head;
         /* __atomic */ math::_usize lrl_length;
         sys::sync::Mutex lrl_lock;
+        LH * rlh_heap;
 
         LRL ();
         ~LRL ();
@@ -142,17 +157,21 @@ namespace vnz::alloc {
         virtual InvocationResult hook_heap_informs_linkage_of_migrating_block (Block * block);
     };
 
+    struct RH;
+
 #define __VNZA_RRLS_CAP 4
 
     // might have to split this
     struct RRLS
         : public RL__EEState_EState,
-          public RL__BlockCache,
-          public RL__Hierarchical
+          public RL__BlockCache
+    // ,public RL__Hierarchical
     {
         Block * rrls_head;
         /* __atomic */ math::_usize rrls_length;
         sys::sync::Mutex rrls_lock;
+
+        RH * rlh_heap;
 
         RRLS ();
         ~RRLS ();
@@ -166,12 +185,14 @@ namespace vnz::alloc {
 #define __VNZA_RRLU_CAP 8
 
     struct RRLU
-        : public RL__BlockCache,
-          public RL__Hierarchical
+        : public RL__BlockCache
+    //, public RL__Hierarchical
     {
         Block * rrlu_head;
         /* __atomic */ math::_usize rrlu_length;
         sys::sync::Mutex rrlu_lock;
+
+        RH * rlh_heap;
 
         RRLU ();
         ~RRLU ();
@@ -211,11 +232,17 @@ namespace vnz::alloc {
 
     struct LH
         : public RH__LPropagator,
-          public RH__LBlockRequest,
-          public RH__Hierarchical
+          public RH__LBlockRequest
+    // , public RH__Hierarchical
     {
-        LAL lal_table[__VNZA_SL_NUMBER];
-        LRL lrl;
+        union {
+            LAL lal_table[__VNZA_SL_NUMBER];
+        };
+        union {
+            LRL lrl;
+        };
+
+        RH * rhh_parent;
 
         LH ();
         ~LH ();
@@ -229,13 +256,17 @@ namespace vnz::alloc {
 
     struct RH
         : public RH__LPropagator,
-          public RH__HPropagator,
-          public RH__HBlockRequest,
-          public RH__Hierarchical,
-          public RH__Parent
+          // public RH__HPropagator,
+          // public RH__HBlockRequest,
+          public RH__Hierarchical
+    // ,public RH__Parent
     {
-        RRLS rrls_table[__VNZA_SL_NUMBER];
-        RRLU rrlu;
+        union {
+            RRLS rrls_table[__VNZA_SL_NUMBER];
+        };
+        union {
+            RRLU rrlu;
+        };
         /* __atomic */ math::_usize rh_active_references;
 
         RH ();
@@ -253,9 +284,10 @@ namespace vnz::alloc {
     };
 
     struct GH
-        : public RH__HBlockRequest,
-          public RH__HPropagator,
-          public RH__Parent
+        :   //public RH__HBlockRequest,
+            // public RH__HPropagator,
+            // public RH__Parent,
+            public RH__Hierarchical
     {
         /* __atomic */ math::_u64 gh_stat_chunks;
         void * gh_chunklist;
@@ -271,5 +303,7 @@ namespace vnz::alloc {
         virtual InvocationResult hook_heap_informs_heap_of_evacuating_block (Block * block);
     };
 }
+
+#include <stdio.h>
 
 #endif /* !@__VNZ_ALLOC */

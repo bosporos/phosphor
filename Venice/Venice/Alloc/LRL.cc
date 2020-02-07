@@ -15,6 +15,11 @@ LRL::LRL ()
 
 LRL::~LRL ()
 {
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("LRL dying: %p-- blocks being sent to %p\n", this, this->rlh_heap);
+    fflush (stdout);
+#endif
+
     lrl_lock.lock ();
     __atomic_store_n (&lrl_length, 0, __ATOMIC_RELEASE);
     Block * block = lrl_head;
@@ -23,6 +28,11 @@ LRL::~LRL ()
         block = block->l_right;
     }
     lrl_lock.unlock ();
+
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("LRL dead: %p (%p)\n", this, this->rlh_heap);
+    fflush (stdout);
+#endif
 }
 
 InvocationResult LRL::hook_heap_informs_linkage_of_block_request (OSize os, Block ** block)

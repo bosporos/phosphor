@@ -15,6 +15,11 @@ RRLU::RRLU ()
 
 RRLU::~RRLU ()
 {
+#if __VNZA_DEBUG_DESTRUCTION
+    printf ("RRLU dying: %p (%p)\n", this, this->rlh_heap);
+    fflush (stdout);
+#endif
+
     rrlu_lock.lock ();
     __atomic_store_n (&rrlu_length, 0, __ATOMIC_RELEASE);
     Block * block = rrlu_head;
