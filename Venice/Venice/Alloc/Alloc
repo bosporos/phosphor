@@ -14,11 +14,13 @@
 #include <Venice/Sys/Thread/ID>
 #include <Venice/Atomic/Atomic>
 
-#define __VNZA_DEBUG_EVAC_LUTI 1
+#define __VNZA_DEBUG_EVAC_LUTI 0
 #define __VNZA_DEBUG_TRACE_BLOCK_REQUEST 1
 #define __VNZA_DEBUG_GH_ALLOCATIONS 1
-#define __VNZA_DEBUG_GH_BLOCK_PLACEMENT 0
-#define __VNZA_DEBUG_DESTRUCTION 0
+#define __VNZA_DEBUG_GH_BLOCK_PLACEMENT 1
+#define __VNZA_DEBUG_DESTRUCTION 1
+#define __VNZA_DEBUG_BLOCK_MIGRATION 1
+#define __VNZA_STRICT_NULLPTR 1
 
 namespace vnz::alloc {
     enum InvocationResult {

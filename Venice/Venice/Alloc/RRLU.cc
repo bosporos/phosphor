@@ -34,9 +34,16 @@ InvocationResult RRLU::hook_heap_informs_linkage_of_block_request (OSize os, Blo
 {
     rrlu_lock.lock ();
     if (rrlu_head != nullptr) {
+        printf ("===== [RRLU] block request: %hu, %p -> %p\n", os, rrlu_head, rrlu_head->l_right);
+        fflush (stdout);
         __atomic_sub_fetch (&rrlu_length, 1, __ATOMIC_ACQ_REL);
-        *block    = rrlu_head;
+        (*block)  = rrlu_head;
         rrlu_head = rrlu_head->l_right;
+#if __VNZA_STRICT_NULLPTR
+        if (rrlu_head != nullptr) {
+            rrlu_head->l_left = nullptr;
+        }
+#endif
         rrlu_lock.unlock ();
         (*block)->globalfree_lock.lock ();
         (*block)->hook_linkage_informs_block_of_format_request (os);
@@ -51,6 +58,9 @@ InvocationResult RRLU::hook_heap_informs_linkage_of_block_request (OSize os, Blo
 InvocationResult RRLU::hook_heap_informs_linkage_of_migrating_block (Block * block)
 {
     rrlu_lock.lock ();
+#if __VNZA_DEBUG_BLOCK_MIGRATION
+    printf ("RRLU %p; migrating block %p (%p)\n", this, block, rrlu_head);
+#endif
     __atomic_add_fetch (&rrlu_length, 1, __ATOMIC_ACQ_REL);
     block->globalfree_lock.unlock ();
     block->l_right = rrlu_head;

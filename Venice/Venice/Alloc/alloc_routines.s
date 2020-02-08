@@ -30,6 +30,9 @@ ___vnza_chain_lookup:
     // = 2 * MSBI + (BIT MSBI - 1)
     adcq %rdx, %rax
     // Return 2 * MSBI + (BIT MSBI - 1)
+
+    // Note from the future: adding a -1 here to correct for observed behaviour
+    decq %rax
     retq
 ___vnz_chain_lookup.zerror:
     movq $-1, %rax

@@ -43,17 +43,21 @@ InvocationResult GH::hook_heap_informs_heap_of_block_request (OSize os, Block **
     // next_chain pointer
     this->gh_chunklist_lock.lock ();
     *reinterpret_cast<void **> (_header_align) = this->gh_chunklist;
+    this->gh_chunklist                         = _memory;
     this->gh_chunklist_lock.unlock ();
-    ++_header_align;
+    // ++_header_align;
 
     // Initialize the block_headers
     Block * _block;
     for (math::_i32 i = 0; i < 63; i++) {
-        _block              = new (&_header_align[i]) Block;
+        _block              = new (&_header_align[i + 1]) Block;
         _block->range_begin = static_cast<void *> (&_block_align[i]);
 #if __VNZA_DEBUG_GH_BLOCK_PLACEMENT
-        printf ("--> [GH] block (%p) => %p\n", _block, _block->range_begin);
+        printf ("--> [GH] block (%p) => %p [%p]\n", _block, _block->range_begin);
 #endif
+        if (i < 62) {
+            gh_tributary->hook_heap_informs_heap_of_surplus_block (_block);
+        }
     }
 
     *block = _block;

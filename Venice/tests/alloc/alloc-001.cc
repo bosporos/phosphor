@@ -17,7 +17,7 @@ static RH __vnza_rh_main;
 
 void * __vnza_malloc (math::_usize size)
 {
-    void * object;
+    void * object = nullptr;
     if (size <= 0x2000) {
         if (IR_OK == __vnza_lh.hook_client_informs_heap_of_allocation_request (size, &object)) {
             return object;
@@ -37,7 +37,7 @@ void * __vnza_malloc (math::_usize size)
 void __vnza_free (void * object)
 {
     const math::_usize o = reinterpret_cast<math::_usize> (object);
-    Block * floor        = reinterpret_cast<Block *> (o & ~(0x100000ull << 1));
+    Block * floor        = reinterpret_cast<Block *> (o - (o % 0x100000ull));
     floor[(o % 0x100000ull) / 0x4000].hook_client_informs_block_of_deallocation_request (object);
 }
 
@@ -55,19 +55,40 @@ void __vnza_init ()
 }
 
 #include <stdio.h>
+#include <sys/mman.h>
+
+#define N 0x40000
 
 int main (int argc, char ** argv)
 {
     __vnza_init ();
 
-    void * p;
+    void ** p = static_cast<void **> (mmap (0, 0x100000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, 0, 0));
 
-    for (int i = 0; i < 0xffff; i++) {
-        printf ("%i --> ", i);
-        p = __vnza_malloc (8);
-        printf ("%i %p\n", i, p);
-        __vnza_free (p);
+    for (long i = 0; i < N; i++) {
+        // printf ("%i ", i);
+        p[i] = __vnza_malloc (8);
     }
+    printf ("\n\n\n");
+    printf ("MODE SWITCH");
+    printf ("\n\n\n");
+
+    printf ("Block registry:\n");
+    Block * bl = __atomic_load_n (&__vnza_lh.lal_table[5].lal_active, __ATOMIC_ACQUIRE);
+    while (bl != nullptr) {
+        printf ("    header: %p range: %p\n", bl, bl->range_begin);
+        bl = bl->l_left;
+    }
+    printf ("\n\n\n");
+
+    fgetc (stdin);
+
+    for (long i = 0; i < N; i++) {
+        printf ("%i ", i);
+        __vnza_free (p[i]);
+    }
+
+    printf ("====> Done.\n");
 
     exit (0);
     // return 0;

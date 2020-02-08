@@ -22,10 +22,11 @@ LRL::~LRL ()
 
     lrl_lock.lock ();
     __atomic_store_n (&lrl_length, 0, __ATOMIC_RELEASE);
-    Block * block = lrl_head;
+    Block *block = lrl_head, *next_block;
     while (block != nullptr) {
+        next_block = block->l_right;
         static_cast<LH *> (rlh_heap)->hook_linkage_informs_heap_of_evacuating_block (block);
-        block = block->l_right;
+        block = next_block;
     }
     lrl_lock.unlock ();
 
@@ -55,6 +56,9 @@ InvocationResult LRL::hook_heap_informs_linkage_of_block_request (OSize os, Bloc
 InvocationResult LRL::hook_heap_informs_linkage_of_migrating_block (Block * block)
 {
     lrl_lock.lock ();
+#if __VNZA_DEBUG_BLOCK_MIGRATION
+    printf ("LRL %p; migrating block %p (%p)\n", this, block, lrl_head);
+#endif
     __atomic_add_fetch (&lrl_length, 1, __ATOMIC_ACQ_REL);
     block->globalfree_lock.unlock ();
     block->l_right = lrl_head;

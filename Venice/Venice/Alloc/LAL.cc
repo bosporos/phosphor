@@ -98,6 +98,9 @@ InvocationResult LAL::hook_heap_informs_linkage_of_allocation_request (void ** o
         lal_lock.lock ();
         Block * tmp_active;
         if (IR_OK == heap->hook_linkage_informs_heap_of_block_request (lal_osize, &tmp_active)) {
+            __atomic_store_n (&tmp_active->block_state, Active, __ATOMIC_RELEASE);
+            tmp_active->l_left                 = nullptr;
+            tmp_active->l_right                = nullptr;
             tmp_active->state_change_responder = static_cast<RL__EEState_EState *> (this);
             tmp_active->globalfree_lock.unlock ();
             __atomic_store_n (&lal_active, tmp_active, __ATOMIC_RELEASE);
@@ -129,7 +132,8 @@ InvocationResult LAL::hook_heap_informs_linkage_of_allocation_request (void ** o
     // aight, so no l_right
     if (IR_OK == heap->hook_linkage_informs_heap_of_block_request (lal_osize, &cphase_active->l_right)) {
         cphase_active->l_right->state_change_responder = static_cast<RL__EEState_EState *> (this);
-        cphase_active->globalfree_lock.unlock ();
+        cphase_active->l_right->globalfree_lock.unlock ();
+        cphase_active->l_right->l_right = nullptr;
         __atomic_store_n (&cphase_active->l_right->block_state, Active, __ATOMIC_RELEASE);
         __atomic_store_n (&cphase_active->block_state, Inactive, __ATOMIC_RELEASE);
 
