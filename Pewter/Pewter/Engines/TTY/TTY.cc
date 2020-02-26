@@ -43,7 +43,7 @@ int TTYOutputManager::init (vnz::math::_i32 _fd, bool _256override)
             return -1;
     }
     tcgetattr (fd, &initial_ttystate);
-    // this->escape ("?1049h");
+    this->escape ("?1049h");
     tcgetattr (fd, &current_ttystate);
 
     return 0;
@@ -51,7 +51,7 @@ int TTYOutputManager::init (vnz::math::_i32 _fd, bool _256override)
 
 void TTYOutputManager::close ()
 {
-    // this->escape ("?1049l");
+    this->escape ("?1049l");
     tcsetattr (fd, TCSADRAIN, &initial_ttystate);
 }
 
@@ -257,11 +257,13 @@ void TTYFrame::update ()
                 goto __advance__;
             __draw__:
                 if (fastadvance_possible) {
-                    output_manager->escape ("C");
+                    // output_manager->escape ("C");
                 } else {
-                    output_manager->escape ("%i;%iH", y + 1, x + 1);
                 }
-                output_manager->express (&cbuf->glyph_buffer[nx_offset]);
+                output_manager->escape ("%i;%iH", y + 1, x + 1);
+
+                printf ("%c", cbuf->glyph_buffer[nx_offset].inner + '0');
+                // output_manager->express (&cbuf->glyph_buffer[nx_offset]);
             __advance__:
                 dbuf_c >>= 1, mbuf_c >>= 1;
                 if (0 == ((++nx_offset) % 64))

@@ -23,6 +23,13 @@ int main (int argc, char ** argv)
     tty_om.enter_raw_state ();
     tty_om.echo (false, false);
 
+    pewter::Glyph clear (1);
+    pewter::Glyph player (2);
+
+    pewter::GlyphSet gs (clear, pewter::color::Pair (0, 0, 0, 255, 255, 255));
+
+    pewter::set_default_glyphset (gs);
+
     pewter::event::EventRegistry ev_er;
     pewter::display::Buffer pbuf;
     pewter::math::Rect<pewter::display::DisplayCoordinate> bounding_box (
@@ -34,12 +41,18 @@ int main (int argc, char ** argv)
 
     TTYFrame tty_frame (&view, &tty_om);
 
-    pewter::Glyph clear (1);
-    pewter::Glyph player (2);
+    pbuf.mask_all (true);
 
     int x = 0, y = 0, xold = 0, yold = 0;
 
     int should_close = false;
+
+    printf ("Window: (%lli, %lli)", bounding_box.size.x, bounding_box.size.y);
+
+    fgetc (stdin);
+
+    tty_om.escape ("1;1H");
+
     while (!should_close) {
         pbuf.glyph_buffer[yold * bounding_box.size.x + xold] = clear;
         pbuf.glyph_buffer[y * bounding_box.size.x + x]       = player;
