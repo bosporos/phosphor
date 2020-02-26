@@ -4,149 +4,160 @@
 //
 
 #include <Venice/Alloc/Alloc>
-#include <Venice/Compiler>
 
-using namespace vnz::math;
 using namespace vnz::alloc;
 
-Block::Block ()
-    : range_begin { nullptr }
+Block::Block (void * _memory)
+    : range_begin { _memory }
     , freeptr_local { nullptr }
     , freeptr_global { nullptr }
     , object_size { 0 }
     , object_count { 0 }
     , allocation_count { 0 }
-    , block_state { Inactive }
-    , state_change_responder { nullptr }   // needs to be set!!!
+    , activation_state { Inactive }
     , bound_thread_id ()
     , globalfree_lock ()
-    , l_left { nullptr }
-    , l_right { nullptr }
+    , left { nullptr }
+    , right { nullptr }
 {}
 
 Block::~Block ()
 {
-#if __VNZA_DEBUG_DESTRUCTION
-    printf ("Block dead: %p (%p)\n", this, this->state_change_responder);
-    fflush (stdout);
-#endif
+    // Does absolutely nothing.
 }
 
-InvocationResult Block::hook_linkage_informs_block_of_allocation_request (void ** object)
+InvocationResult Block::allocate_object (void ** _object)
 {
-    if (freeptr_local != nullptr) {
-        // always returns IR_OK
-        __atomic_add_fetch (&allocation_count, 1, __ATOMIC_ACQ_REL);
-        __local_alloc (object);
-        return IR_OK;
+    if (LIKELY (freeptr_local != nullptr)) {
+        return this->__allocate_object_internal (_object);
     } else {
-        printf ("DEFAULTING TO FPG CHECK (%p)\n", this);
+#ifdef __VNZA_DEBUG
+        if (_vnza_debug_state & VNZA_DBG_SIGNAL_ALLOCATION_BRANCHING) {
+            vnza_debug_println ("block::allocate_object -> local free pointer failed, trying global free pointer");
+        }
+#endif
         globalfree_lock.lock ();
-        // dont know if compiler is smart enough to recognize this as a swap operation
-        // #if 0 && CPU(X86_64)
-        //         // __asm__(
-        //         //     "xchgq %0, %1;\n"
-        //         //     : "+m"(freeptr_local), "+m"(freeptr_global)
-        //         //     :
-        //         //     : "memory");
-        // #else
+        // I'm sure there's an easier way to do this
         freeptr_local  = freeptr_global;
         freeptr_global = nullptr;
-        // #endif
         globalfree_lock.unlock ();
-        if (freeptr_local != nullptr) {
-            printf ("    SUCCESSFUL\n");
-            // always returns IR_OK;
-            __atomic_add_fetch (&allocation_count, 1, __ATOMIC_ACQ_REL);
-            __local_alloc (object);
-            return IR_OK;
+
+        if (LIKELY (freeptr_local != nullptr)) {
+#ifdef __VNZA_DEBUG
+            if (_vnza_debug_state & VNZA_DBG_SIGNAL_ALLOCATION_BRANCHING) {
+                vnza_debug_println ("block::allocate_object -> global free pointer swap succeeds");
+            }
+#endif
+            return this->__allocate_object_internal (_object);
+        } else {
+#ifdef __VNZA_DEBUG
+            if (_vnza_debug_state & VNZA_DBG_SIGNAL_ALLOCATION_BRANCHING) {
+                vnza_debug_println ("block::allocate_object -> global free pointer swap failed");
+            }
+#endif
+            return IR_FAIL;
         }
-        printf ("    FAIL\n");
-        return IR_FAIL;
     }
 }
 
-InvocationResult Block::__local_alloc (void ** object)
+InvocationResult Block::__allocate_object_internal (void ** _object)
 {
-    *object  = freeptr_local;
-    _u16 off = *static_cast<_u16 *> (*object);
-    if (off != 0xffff) {
-        freeptr_local = static_cast<void *> (static_cast<_u8 *> (range_begin) + off);
+    (*_object)     = freeptr_local;
+    uint16_t _diff = *static_cast<uint16_t *> (freeptr_local);
+    if (_diff != 0xffff) {
+        freeptr_local = static_cast<void *> (
+            static_cast<uint8_t *> (range_begin) + _diff);
+#ifdef __VNZA_DEBUG
+    } else if ((static_cast<uint8_t *> (freeptr_local) - static_cast<uint8_t *> (range_begin)) >= 0x4000) {
+        vnza_debug_println ("block::__allocate_object_internal -> free chain corruption detected.");
+        vnza_debug_println ("\tdelta offset: %hu to %p", _diff, freeptr_local);
+        vnza_debug_println ("\tblock: %p backed %p", this, range_begin);
+        return IR_FAIL;
+#endif
     } else {
         freeptr_local = nullptr;
     }
     return IR_OK;
 }
 
-InvocationResult Block::hook_client_informs_block_of_deallocation_request (void * object)
+InvocationResult Block::deallocate_object (void * _object)
 {
-    if (static_cast<_usize> (static_cast<_u8 *> (object) - static_cast<_u8 *> (range_begin)) >= 0x4000) {
-        __asm__("ud2");
+#ifdef __VNZA_DEBUG
+    if ((_vnza_debug_state & VNZA_DBG_SIGNAL_BAD_DEALLOC) && static_cast<uintptr_t> (static_cast<uint8_t *> (_object) - static_cast<uint8_t *> (range_begin)) >= 0x4000) {
+        vnza_debug_println ("block::deallocate_object -> bad deallocation detected.");
+        vnza_debug_println ("\tobject: %p at offset %lli", _object, static_cast<uint64_t> (static_cast<uint8_t *> (_object) - static_cast<uint8_t *> (range_begin)));
+        vnza_debug_println ("\tblock: %p backed %p", this, range_begin);
+        return IR_FAIL;
     }
+#endif
     if (bound_thread_id.is_current ()) {
-        if (LIKELY (freeptr_local != nullptr)) {
-            *static_cast<_u16 *> (object) = static_cast<_u8 *> (freeptr_local) - static_cast<_u8 *> (range_begin);
+        if (freeptr_local != nullptr) {
+            *static_cast<uint16_t *> (_object) = static_cast<uint8_t *> (freeptr_local) - static_cast<uint8_t *> (range_begin);
         } else {
-            *static_cast<_u16 *> (object) = 0xffff;
+            *static_cast<uint16_t *> (_object) = 0xffff;
         }
-        freeptr_local = object;
-        OCount oc     = __atomic_sub_fetch (&allocation_count, 1, __ATOMIC_ACQ_REL);
-        if (__atomic_load_n (&block_state, __ATOMIC_ACQUIRE) != Active) {
-            if (oc == 0)
-                // if we took it down to 0...
-                state_change_responder->hook_block_informs_linkage_of_empty_state (this);
-            else if (oc <= object_count / 4)
-                // if we made it empty enough...
-                state_change_responder->hook_block_informs_linkage_of_empty_enough_state (this);
-        }
+        freeptr_local = _object;
     } else {
         globalfree_lock.lock ();
-        if (LIKELY (freeptr_global != nullptr)) {
-            *static_cast<_u16 *> (object) = static_cast<_u8 *> (freeptr_global) - static_cast<_u8 *> (range_begin);
+        if (freeptr_global != nullptr) {
+            *static_cast<uint16_t *> (_object) = static_cast<uint8_t *> (freeptr_global) - static_cast<uint8_t *> (range_begin);
         } else {
-            *static_cast<_u16 *> (object) = 0xffff;
+            *static_cast<uint16_t *> (_object) = 0xffff;
         }
-        freeptr_global = object;
-        // aight we need this INSIDE the globalfree_lock
-        OCount oc = __atomic_sub_fetch (&allocation_count, 1, __ATOMIC_ACQ_REL);
-        if (__atomic_load_n (&block_state, __ATOMIC_ACQUIRE) != Active) {
-            if (oc == 0)
-                // if we took it down to 0...
-                state_change_responder->hook_block_informs_linkage_of_empty_state (this);
-            else if (oc <= object_count / 4)
-                // if we made it empty enough...
-                state_change_responder->hook_block_informs_linkage_of_empty_enough_state (this);
-        }
+        freeptr_global = _object;
         globalfree_lock.unlock ();
     }
+
     return IR_OK;
 }
 
-InvocationResult Block::hook_linkage_informs_block_of_format_request (OSize size_to_format)
+InvocationResult Block::format (uint16_t _object_size)
 {
-    // we know we have sole control and that we are empty
-    // therefore, allocation_count is already 0
-
-    // quick check
-    // if (size_to_format != object_size) {
-    object_size  = size_to_format;
-    object_count = 0x4000 / object_size;
-    // object_count - 1 b/c offset 0 is object 0
-    _u8 * bptr = static_cast<_u8 *> (range_begin) + object_size * (object_count - 1);
-    _u16 index = 0xffff;
-    while (bptr >= static_cast<_u8 *> (range_begin)) {
-        *reinterpret_cast<_u16 *> (bptr) = index;
-        index                            = bptr - static_cast<_u8 *> (range_begin);
-        bptr -= object_size;
+#ifdef __VNZA_DEBUG
+    if (_object_size == 0) {
+        vnza_debug_println ("block::format -> object size given as zero (0)");
+        return IR_FAIL;
     }
-    freeptr_local  = range_begin;
-    freeptr_global = nullptr;
-    // }
+    if (_object_size >= 0x4000) {
+        vnza_debug_println ("block::format -> object size larger than block (%hu)", _object_size);
+        return IR_FAIL;
+    }
+#endif
+    object_size  = _object_size;
+    object_count = 0x4000 / _object_size;
+    for (uint16_t _index = 0; _index < object_count; _index++) {
+        uint16_t _next_index = LIKELY (_index != object_count - 1) ? (_index + 1) : 0xffff;
+        *reinterpret_cast<uint16_t *> (
+            &(static_cast<uint8_t *> (range_begin)
+                  [_index * _object_size]))
+            = _next_index;
+    }
+
     return IR_OK;
 }
 
-InvocationResult Block::hook_linkage_informs_block_of_reassignment ()
+InvocationResult Block::reassign ()
 {
+#ifdef __VNZA_DEBUG
+    uint64_t _old_owner = bound_thread_id.inner;
+#endif
     bound_thread_id.bind_to_current ();
+#ifdef __VNZA_DEBUG
+    if (_vnza_debug_state & VNZA_DBG_SIGNAL_REASSIGNMENT) {
+        vnza_debug_println ("block::format -> thread changing, moving from TID %p to TID %p", reinterpret_cast<void *> (static_cast<uint64_t> (_old_owner)), reinterpret_cast<void *> (static_cast<uint64_t> (bound_thread_id.inner)));
+    }
+#endif
     return IR_OK;
+}
+
+void Block::link_excise ()
+{
+    if (left != nullptr)
+        left->right = right;
+    if (right != nullptr)
+        right->left = left;
+    // // Don't leave behind loose ends.
+    // // UPDATE: actually, yes, do leave them. clear only as necessary.
+    // left  = nullptr;
+    // right = nullptr;
 }

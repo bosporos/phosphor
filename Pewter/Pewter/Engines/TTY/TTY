@@ -1,0 +1,80 @@
+// -*- mode: c++ -*-
+
+//
+// project pewter
+// author Maximilien M. Cura
+//
+
+#ifndef __PEWTER_ENGINE_TTY
+#define __PEWTER_ENGINE_TTY
+
+#include <Venice/Math/Integers>
+#include <Pewter/Display/Buffer>
+#include <Pewter/Display/View>
+#include <Pewter/Engine/Frame>
+#include <Pewter/Engine/Input>
+
+#include <termios.h>
+#include <map>
+
+namespace pewter::engines::tty {
+
+#define TTOM_SIZE_CHANGE 1
+#define TTOM_24COLOR 2
+
+    struct TTYGlyphMapping
+    {
+        std::map<pewter::GlyphInternal, const char8_t *> glyph_mapping;
+
+        void map (pewter::GlyphInternal gi, const char8_t * sutf8);
+        const char8_t * mapped (pewter::GlyphInternal);
+    };
+
+    enum class TTYColorSupport {
+        Unknown,
+        Color256,
+        Truecolor,
+    };
+
+    struct TTYOutputManager
+    {
+        vnz::math::_i32 fd;
+        vnz::math::_u32 flags;
+
+        TTYGlyphMapping * glyph_mapping;
+
+        struct termios initial_ttystate;
+        struct termios current_ttystate;
+
+        TTYOutputManager (TTYGlyphMapping *);
+
+        int init (vnz::math::_i32, bool _256override = false);
+        void close ();
+
+        void enter_raw_state ();
+
+        math::Point<display::DisplayCoordinate> size ();
+        void echo (bool normal, bool lineedit = false);
+
+        void escape (const char * fmt, ...);
+        void express (Glyph * glyph);
+
+        TTYColorSupport color_support ();
+    };
+
+    struct TTYFrame
+        : public ::pewter::engine::Frame
+    {
+        TTYFrame (display::View *, TTYOutputManager *);
+
+        TTYOutputManager * output_manager;
+        bool * draw_cache;
+
+        bool _draw_cache_allocated = false;
+
+        virtual void update ();
+        virtual engine::Input wait_for_input ();
+    };
+}
+
+#endif /* !@__PEWTER_ENGINE_TTY */

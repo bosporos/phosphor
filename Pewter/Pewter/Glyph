@@ -1,0 +1,57 @@
+// -*- mode: c++ -*-
+
+//
+// project pewter
+// author Maximilien M. Cura
+//
+
+#ifndef __PEWTER_GLYPH
+#define __PEWTER_GLYPH
+
+#include <Venice/Math/Integers>
+#include <Pewter/Color>
+
+namespace pewter {
+    typedef vnz::math::_u32 GlyphInternal;
+    typedef vnz::math::_u32 GlyphProperties;
+
+    struct Glyph
+    {
+        static const GlyphProperties PROPERTIES_NONE             = 0;
+        static const GlyphProperties PROPERTY_DEFAULT_FORE       = 1;
+        static const GlyphProperties PROPERTY_DEFAULT_BACK       = 2;
+        static const GlyphProperties PROPERTY_DEFAULT_COLOR_MASK = 1 | 2;
+
+        GlyphInternal inner;
+        GlyphProperties properties;
+        color::Pair coloration;
+
+        Glyph ();
+        Glyph (Glyph const &);
+        Glyph (GlyphInternal, GlyphProperties properties = Glyph::PROPERTY_DEFAULT_COLOR_MASK);
+        Glyph (GlyphInternal, color::Pair, GlyphProperties properties = Glyph::PROPERTY_DEFAULT_COLOR_MASK);
+
+        void set (GlyphInternal, GlyphProperties properties);
+        void set (GlyphInternal, color::Pair);
+        void set (GlyphInternal, color::Pair, GlyphProperties);
+        void set (color::Pair, GlyphProperties);
+
+        Glyph & operator= (Glyph const &);
+    };
+
+    struct GlyphSet
+    {
+        Glyph glyph_default;
+        color::Pair coloration_default;
+
+        GlyphSet (Glyph, color::Pair);
+        GlyphSet (GlyphSet const &);
+        GlyphSet & operator= (GlyphSet const &);
+    };
+
+    extern GlyphSet _glyphset_default;
+    GlyphSet & default_glyphset ();
+    void set_default_glyphset (GlyphSet);
+}
+
+#endif /* !@__PEWTER_GLYPH */

@@ -32,7 +32,7 @@ include (cmake/phosphor-central-build/central.cmake)
 # Declaration of subprojects
 #
 
-# dev note: currently, Venice is the only one that's actually in progress
+phos_add_proj("Pewter")
 
 # Venice, abbr. vnz
 phos_add_proj("Venice")

@@ -11,7 +11,7 @@ if(APPLE)
 endif()
 
 find_library(_vnz_pthread pthread)
-if(NOT _vnz_pthread AND NOT PHOSPHOR_TARGET_OS_UNKOWN_SIENNA)
+if(NOT _vnz_pthread AND NOT PHOSPHOR_TARGET_OS_UNKNOWN_SIENNA)
     message(FATAL_ERROR "Couldn't find libpthread")
 else()
     list(APPEND vnz_libraries ${_vnz_pthread})

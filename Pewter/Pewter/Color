@@ -1,0 +1,155 @@
+// -*- mode: c++ -*-
+
+//
+// project pewter
+// author Maximilien M. Cura
+//
+
+#ifndef __PEWTER_COLOR
+#define __PEWTER_COLOR
+
+#include <Venice/Math/Integers>
+
+// TODO: switch from float to f32 for hsv(a) stuff
+#include <math.h>
+
+namespace pewter::color {
+    typedef vnz::math::_u8 ColorComponent;
+    typedef vnz::math::_u32 ColorInternal;
+
+    enum __BypassColorRangeCheck_t { __BypassColorRangeCheck };
+
+    struct Color
+    {
+        static Color rgb (ColorComponent _red, ColorComponent _green, ColorComponent _blue, ColorComponent _alpha = 0xff)
+        {
+            return Color (_red, _green, _blue, _alpha);
+        }
+
+        static Color hsv (float _hue, float _saturation, float _value, float _alpha = 1.0)
+        {
+            if (_hue < 0)
+                _hue = 0;
+            if (_hue > 360)
+                _hue = 360;
+            if (_saturation < 0)
+                _saturation = 0;
+            if (_saturation > 1)
+                _saturation = 1;
+            if (_value < 0)
+                _saturation = 0;
+            if (_value > 1)
+                _saturation = 1;
+            if (_alpha < 0)
+                _alpha = 0;
+            if (_alpha > 1)
+                _alpha = 1;
+
+            if (_saturation == 0) {
+                return Color (0, 0, 0, __BypassColorRangeCheck, 255 * _alpha);
+            }
+            float _huep = (_hue - _hue) * 6.0f;
+            float _f    = _huep - (int)_huep;
+            float _p    = _value * (1. - _saturation),
+                  _q    = _value * (1. - _saturation * _f),
+                  _t    = _value * (1. - (_saturation * (1. - _f)));
+            switch ((int)_f) {
+                case 0: return Color (255 * _value, 255 * _t, 255 * _p, __BypassColorRangeCheck, 255 * _alpha);
+                case 1: return Color (255 * _q, 255 * _value, 255 * _p, __BypassColorRangeCheck, 255 * _alpha);
+                case 2: return Color (255 * _p, 255 * _value, 255 * _t, __BypassColorRangeCheck, 255 * _alpha);
+                case 3: return Color (255 * _p, 255 * _q, 255 * _value, __BypassColorRangeCheck, 255 * _alpha);
+                case 4: return Color (255 * _t, 255 * _p, 255 * _value, __BypassColorRangeCheck, 255 * _alpha);
+                case 5: return Color (255 * _value, 255 * _p, 255 * _q, __BypassColorRangeCheck, 255 * _alpha);
+                default:
+                    return Color (0, 0, 0, __BypassColorRangeCheck, 0);
+            }
+        }
+
+        // stored as ARGB 8/8/8/8
+        // we don't really use the A component, but the lower 24 are all there.
+        struct ARGB
+        {
+            vnz::math::_u32 alpha : 8;
+            vnz::math::_u32 red : 8;
+            vnz::math::_u32 blue : 8;
+            vnz::math::_u32 green : 8;
+        };
+
+        union {
+            ARGB ordered;
+            ColorInternal raw;
+        };
+
+        Color (ColorComponent _grey, ColorComponent _alpha = 0xff)
+        {
+            // if (_grey < 0)
+            //     _grey = 0u8;
+            // if (_grey > 255)
+            //     _grey = 255u8;
+            // if (_alpha < 0)
+            //     _alpha = 0u8;
+            // if (_alpha > 255)
+            //     _alpha = 255u8;
+            raw = (_alpha << 24) | (_grey << 16) | (_grey << 8) | (_grey);
+        }
+
+        Color (ColorComponent _red, ColorComponent _green, ColorComponent _blue, ColorComponent _alpha = 0xff)
+        {
+            // if (_red < 0)
+            //     _red = 0u8;
+            // if (_red > 255)
+            //     _red = 255u8;
+            // if (_green < 0)
+            //     _green = 0u8;
+            // if (_green > 255)
+            //     _green = 255u8;
+            // if (_blue < 0)
+            //     _blue = 0u8;
+            // if (_blue > 255)
+            //     _blue = 255u8;
+            // if (_alpha < 0)
+            //     _alpha = 0u8;
+            // if (_alpha > 255)
+            //     _alpha = 255u8;
+            raw = (_alpha << 24) | (_red << 16) | (_green << 8) | (_blue);
+        }
+
+        Color (ColorComponent _red, ColorComponent _green, ColorComponent _blue, __BypassColorRangeCheck_t, ColorComponent _alpha = 0xff)
+        {
+            raw = (_alpha << 24) | (_red << 16) | (_green << 8) | (_blue);
+        }
+
+        Color (ColorInternal _x)
+            : raw { _x }
+        {}
+
+        Color (Color const & _color)
+            : raw { _color.raw }
+        {}
+    };
+
+    struct Pair
+    {
+        Color foreground;
+        Color background;
+
+        Pair (Color const & fg, Color const & bg)
+            : foreground { fg }
+            , background { bg }
+        {}
+        Pair (ColorInternal i1, ColorInternal i2)
+            : foreground (i1)
+            , background (i2)
+        {}
+        Pair (ColorComponent r1, ColorComponent g1, ColorComponent b1, ColorComponent r2, ColorComponent g2, ColorComponent b2)
+            : foreground (r1, g1, b1)
+            , background (r2, g2, b2)
+        {}
+        Pair (ColorComponent r1, ColorComponent g1, ColorComponent b1, ColorComponent a1, ColorComponent r2, ColorComponent g2, ColorComponent b2, ColorComponent a2)
+            : foreground (r1, g1, b1, a1)
+            , background (r2, g2, b2, a2)
+        {}
+    };
+}
+
+#endif /* !@__PEWTER_COLOR */

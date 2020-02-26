@@ -14,4 +14,4 @@ else()
     set(VENICE_BUILD_SHARED OFF CACHE BOOL "Build shared library.")
 endif()
 
-set(VENICE_BUILD_TESTS $<IF:$<CONFIG:Debug>,ON,OFF> CACHE BOOL "Build venice with test suite")
+set(VENICE_BUILD_TESTS $<IF:$<CONFIG:Debug>,ON,OFF> CACHE BOOL "Build venice with test suite.")

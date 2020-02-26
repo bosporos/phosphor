@@ -1,0 +1,194 @@
+// -*- mode: c++
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_MATH_GEOMETRY
+#define __VNZ_MATH_GEOMETRY
+
+#include <Venice/Lang/Conditional>
+#include <Venice/Math/Integers>
+
+#include <string.h>
+#include <stdarg.h>
+
+namespace vnz::math {
+    namespace fixed_geom {
+        template <class T, unsigned long long N>
+        struct NSpace
+        {
+            typedef T number_type;
+            static const u64 dimensions = N;
+        };
+
+        template <class T, unsigned long long N>
+        struct NVec
+        {
+            typedef Space<T, N> vector_space;
+            typedef NVec<T, N> vector_type;
+            vector_space::number_type coordinates[vector_space::dimensions] = {};
+
+            NVec ()
+            {}
+
+            NVec (vector_type const & orig)
+            {
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] = orig.coordinates[i];
+                }
+            }
+
+            NVec (...)
+            {
+                va_list vargs;
+                va_start (vargs, this);
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] = va_arg (vargs, T);
+                }
+                va_end (vargs);
+            }
+
+            NVec (vector_space::number_type * coordinates)
+            {
+                memcpy (&coordinates[0], coordinates, N * sizeof (T));
+            }
+
+            vector_type & add_self (vector_type const & rhs)
+            {
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] += rhs.coordinates[i];
+                }
+                return *this;
+            }
+
+            vector_type add (vector_type rhs)
+            {
+                return rhs.add_self (*this);
+            }
+
+            vector_type & sub_self (vector_type const & rhs)
+            {
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] -= rhs.coordinates[i];
+                }
+                return *this;
+            }
+
+            vector_type sub (vector_type rhs)
+            {
+                return rhs.sub_self (*this);
+            }
+
+            vector_type & mul_self (T scalar)
+            {
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] *= scalar;
+                }
+                return *this;
+            }
+
+            vector_type mul (T scalar)
+            {
+                return Vector (*this).mul_self (scalar);
+            }
+
+            vector_type & div_self (T scalar)
+            {
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] /= scalar;
+                }
+                return *this;
+            }
+
+            vector_type div (T scalar)
+            {
+                return Vector (*this).div_self (scalar);
+            }
+
+            T coord_sum ()
+            {
+                T result = 0;
+                for (int i = 0; i < N; i++) {
+                    result += coordinates[i];
+                }
+                return result;
+            }
+
+            T coord_prod ()
+            {
+                T result = 0;
+                for (int i = 0; i < N; i++) {
+                    result *= coordinates[i];
+                }
+                return result;
+            }
+
+            T dot (vector_type const & rhs)
+            {
+                T result = 0;
+                for (int i = 0; i < N; i++) {
+                    result += rhs.coordinates[i] * coordinates[i];
+                }
+                return result;
+            }
+
+            vector_type cross (vnz::If<N == 3, vector_type> const & rhs)
+            {
+                return vector_type (
+                    /* x = yz - zy */
+                    coordinates[1] * rhs.coordinates[2] - coordinates[2] * rhs.coordinates[1],
+                    /* y = zx - xz */
+                    coordinates[2] * rhs.coordinates[0] - coordinates[0] * rhs.coordinates[2],
+                    /* z = xy - yx */
+                    coordinates[0] * rhs.coordinates[1] - coordinates[1] * rhs.coordinates[0]);
+            }
+
+            template <class LT = vector_space::number_type>
+            LT mag ()
+            {
+                return sqrt (dot (*this));
+            }
+
+            vector_type & normalize_self ()
+            {
+                T mag = mag ();
+                for (int i = 0; i < N; i++) {
+                    coordinates[i] /= mag;
+                }
+                return *this;
+            }
+
+            vector_type normalize ()
+            {
+                return Vector (*this).normalize_self ();
+            }
+
+            vnz::If<N == 2 || N == 3, T> & x ()
+            {
+                return coordinates[0];
+            }
+            vnz::If<N == 2 || N == 3, T> & y ()
+            {
+                return coordinates[1];
+            }
+            vnz::If<N == 3, T> & z ()
+            {
+                return coordinates[2];
+            }
+        };
+
+        template <class T, unsigned long long N>
+        struct HRect
+        {
+            typedef NSpace<T, N> rect_space;
+            typedef NVec<T, N> vector_type;
+
+            NVec<T, N> center;
+            NVec<T, N> dimensions;
+        };
+    }
+}
+
+#endif /* !@__VNZ_MATH_GEOMETRY */

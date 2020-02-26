@@ -60,15 +60,17 @@ vnz_file("venice/arch/x86-64/string/utility.s")
 
 vnz_file("venice/range/range.cc")
 
-vnz_file("venice/alloc/gh.cc")
-vnz_file("venice/alloc/rh.cc")
-vnz_file("venice/alloc/lh.cc")
-vnz_file("venice/alloc/rrls.cc")
-vnz_file("venice/alloc/rrlu.cc")
-vnz_file("venice/alloc/lal.cc")
-vnz_file("venice/alloc/lrl.cc")
-vnz_file("venice/alloc/block.cc")
-vnz_file("venice/alloc/alloc_routines.s")
+# vnz_file("venice/alloc/gh.cc")
+# vnz_file("venice/alloc/rh.cc")
+# vnz_file("venice/alloc/lh.cc")
+# vnz_file("venice/alloc/rrls.cc")
+# vnz_file("venice/alloc/rrlu.cc")
+# vnz_file("venice/alloc/lal.cc")
+# vnz_file("venice/alloc/lrl.cc")
+# vnz_file("venice/alloc/block.cc")
+# vnz_file("venice/alloc/interface.cc")
+# vnz_file("venice/alloc/alloc.cc")
+# vnz_file("venice/alloc/alloc_routines.s")
 
 # LIBRARIES
 
@@ -92,7 +94,7 @@ else()
 endif()
 
 # prettify for diagnostics
-string(REPLACE "${vnz_root}" "\n\t@" vnz_sources_pretty ${vnz_sources})
+string(REPLACE "${vnz_root}" "\n\t@" vnz_sources_pretty "${vnz_sources}")
 message(STATUS "Sources: ${vnz_sources_pretty}")
 
 target_sources(venice PRIVATE ${vnz_sources})
@@ -105,6 +107,6 @@ target_include_directories(venice PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_options(venice PRIVATE)
 target_link_libraries(venice PRIVATE ${vnz_libraries})
 
-add_executable(test-alloc-001 "tests/alloc/alloc-001.cc")
-set_property(TARGET test-alloc-001 PROPERTY CXX_STANDARD_20)
-target_link_libraries(test-alloc-001 PUBLIC venice)
+# add_executable(test-alloc-001 "tests/alloc/alloc-001.cc")
+# set_property(TARGET test-alloc-001 PROPERTY CXX_STANDARD_20)
+# target_link_libraries(test-alloc-001 PUBLIC venice)
