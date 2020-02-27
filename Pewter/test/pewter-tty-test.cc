@@ -47,6 +47,12 @@ int main (int argc, char ** argv)
 
     int should_close = false;
 
+    for (int i = 0; i < bounding_box.size.y; i++) {
+        for (int j = 0; j < bounding_box.size.x; j++) {
+            printf (".");
+        }
+        // printf ("\n");
+    }
     printf ("Window: (%lli, %lli)", bounding_box.size.x, bounding_box.size.y);
 
     fgetc (stdin);

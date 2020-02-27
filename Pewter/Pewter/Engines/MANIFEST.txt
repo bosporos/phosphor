@@ -1,1 +1,0 @@
-This directory contains the various display engines that pewter supports.

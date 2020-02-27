@@ -13,7 +13,7 @@
 // TODO: switch from float to f32 for hsv(a) stuff
 #include <math.h>
 
-namespace pewter::color {
+namespace pewter {
     typedef vnz::math::_u8 ColorComponent;
     typedef vnz::math::_u32 ColorInternal;
 

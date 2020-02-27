@@ -1,0 +1,94 @@
+// -*- mode:c++ -*-
+
+//
+// project pewter
+// author Maximilien M. Cura
+//
+
+#ifndef __PEWTER_DISPLAY
+#define __PEWTER_DISPLAY
+
+#include <Venice/Math/Integers>
+
+#include <Pewter/Color>
+#include <Pewter/Geometry>
+#include <Pewter/Glyph>
+
+#include <vector>
+#include <queue>
+
+namespace pewter {
+    typedef vnz::math::_i32 DisplayCoord;
+    typedef vnz::math::_i32 Priority;
+
+    template <class T>
+    struct ResizingBuffer
+    {
+        T * inner                      = nullptr;
+        Rect<DisplayCoord> * footprint = nullptr;
+
+        ResizingBuffer (T basic)
+        {}
+
+        ~ResizingBuffer ()
+        {
+            if (inner != nullptr) {
+                delete[] inner;
+            }
+        }
+
+        void resize (Rect<DisplayCoord> * r)
+        {
+            footprint = r;
+            if (inner != nullptr)
+                delete[] inner;
+            inner = new T[r.size.x * r.size.y];
+        }
+
+        T & operator[] (int i)
+        {
+            return inner[i];
+        }
+    }
+
+    enum DisplayDeltaType {
+        GlyphDelta,
+        PriorityDelta,
+    };
+
+    struct DisplayDelta
+    {
+        math::Point<DisplayCoord> where;
+        DisplayDeltaType what;
+    };
+
+    struct Layer
+    {
+        ResizingBuffer<Glyph> layer_glyph_buffer;
+        ResizingBuffer<bool> layer_mask_buffer;
+
+        Rect<DisplayCoord> * box;
+    };
+
+    struct Display
+    {
+        std::vector<LayerDelegate> layer_delegates;
+
+        std::queue<DisplayDelta> deltas;
+
+        ResizingBuffer<bool> dirty_buffer;
+        ResizingBuffer<Priority> priority_buffer;
+
+        Rect<DisplayCoord> box;
+    };
+
+    struct RenderEngine
+    {
+        Display * main_display;
+
+        virtual void init () = 0;
+    };
+
+}
+
+#endif /* !@__PEWTER_DISPLAY */
