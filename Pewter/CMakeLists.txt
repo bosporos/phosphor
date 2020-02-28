@@ -45,6 +45,7 @@ include(cmake/pewter-build/config.cmake)
 pwt_file("Pewter/Renderers/TTY/TTY.cc")
 pwt_file("Pewter/Display.cc")
 pwt_file("Pewter/Glyph.cc")
+pwt_file("Pewter/Pewter.cc")
 
 #
 # LIBRARIES
