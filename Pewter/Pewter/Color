@@ -69,10 +69,10 @@ namespace pewter {
         // we don't really use the A component, but the lower 24 are all there.
         struct ARGB
         {
-            vnz::math::_u32 alpha : 8;
-            vnz::math::_u32 red : 8;
             vnz::math::_u32 blue : 8;
             vnz::math::_u32 green : 8;
+            vnz::math::_u32 red : 8;
+            vnz::math::_u32 alpha : 8;
         };
 
         union {

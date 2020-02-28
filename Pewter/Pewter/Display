@@ -15,78 +15,98 @@
 #include <Pewter/Glyph>
 
 #include <vector>
-#include <queue>
+#include <list>
+#include <deque>
 
 namespace pewter {
     typedef vnz::math::_i32 DisplayCoord;
-    typedef vnz::math::_i32 Priority;
 
     template <class T>
     struct ResizingBuffer
     {
-        T * inner                      = nullptr;
-        Rect<DisplayCoord> * footprint = nullptr;
+        T * inner = nullptr;
+        Rect<DisplayCoord> footprint;
 
-        ResizingBuffer (T basic)
-        {}
+        ResizingBuffer (Rect<DisplayCoord> _footprint)
+            : footprint { _footprint }
+        {
+            resize (_footprint);
+        }
 
         ~ResizingBuffer ()
         {
             if (inner != nullptr) {
-                delete[] inner;
+                free (inner);
             }
         }
 
-        void resize (Rect<DisplayCoord> * r)
+        void resize (Rect<DisplayCoord> r)
         {
             footprint = r;
             if (inner != nullptr)
-                delete[] inner;
-            inner = new T[r.size.x * r.size.y];
+                free (inner);
+            inner = static_cast<T *> (calloc (r.size.x * r.size.y, sizeof (T)));
         }
 
         T & operator[] (int i)
         {
             return inner[i];
         }
-    }
-
-    enum DisplayDeltaType {
-        GlyphDelta,
-        PriorityDelta,
     };
+
+    typedef vnz::math::_i32 LayerIndex;
 
     struct DisplayDelta
     {
-        math::Point<DisplayCoord> where;
-        DisplayDeltaType what;
+        Point<DisplayCoord> where;
+        Glyph * what;
+
+        DisplayDelta (Point<DisplayCoord>, Glyph *);
     };
 
     struct Layer
     {
+        Rect<DisplayCoord> box;
+
         ResizingBuffer<Glyph> layer_glyph_buffer;
         ResizingBuffer<bool> layer_mask_buffer;
 
-        Rect<DisplayCoord> * box;
+        LayerIndex order;
+
+        Layer (Rect<DisplayCoord>);
     };
 
     struct Display
     {
-        std::vector<LayerDelegate> layer_delegates;
-
-        std::queue<DisplayDelta> deltas;
-
-        ResizingBuffer<bool> dirty_buffer;
-        ResizingBuffer<Priority> priority_buffer;
+        std::vector<Layer *> layers;
+        // we use _u64 to hash the delta-where-coordinates to speed up delta rendering
+        // by preventing "delta stacking".
+        std::deque<DisplayDelta> deltas;
+        std::list<Layer *> layer_order;
 
         Rect<DisplayCoord> box;
+        ResizingBuffer<LayerIndex> layer_index_buffer;
+
+        Display (Point<DisplayCoord>);
+
+        // only changes Display's stuff, nothing else
+        void size_change (Rect<DisplayCoord> new_size);
+
+        void mask_layer (Layer *, bool);
+        void mask_box_on_layer (Layer *, Rect<DisplayCoord>, bool);
+
+        Glyph & at (Layer *, Point<DisplayCoord>);
+        Glyph & at (Layer *, DisplayCoord, DisplayCoord);
+        void needs_update (Layer *, Point<DisplayCoord>);
     };
 
-    struct RenderEngine
+    struct Renderer
     {
-        Display * main_display;
+        virtual void init ()  = 0;
+        virtual void close () = 0;
 
-        virtual void init () = 0;
+        virtual void render_deltas (Display * display) = 0;
+        virtual void render_full (Display * display)   = 0;
     };
 
 }

@@ -22,19 +22,20 @@ namespace pewter {
         static const GlyphProperties PROPERTY_DEFAULT_BACK       = 2;
         static const GlyphProperties PROPERTY_DEFAULT_COLOR_MASK = 1 | 2;
 
-        GlyphInternal inner;
-        GlyphProperties properties;
-        color::Pair coloration;
+        GlyphInternal inner        = 0;
+        GlyphProperties properties = Glyph::PROPERTY_DEFAULT_COLOR_MASK;
+        Pair coloration;
 
         Glyph ();
         Glyph (Glyph const &);
         Glyph (GlyphInternal, GlyphProperties properties = Glyph::PROPERTY_DEFAULT_COLOR_MASK);
-        Glyph (GlyphInternal, color::Pair, GlyphProperties properties = Glyph::PROPERTY_DEFAULT_COLOR_MASK);
+        Glyph (GlyphInternal, Pair, GlyphProperties properties = Glyph::PROPERTY_DEFAULT_COLOR_MASK);
 
+        void set (GlyphInternal);
         void set (GlyphInternal, GlyphProperties properties);
-        void set (GlyphInternal, color::Pair);
-        void set (GlyphInternal, color::Pair, GlyphProperties);
-        void set (color::Pair, GlyphProperties);
+        void set (GlyphInternal, Pair);
+        void set (GlyphInternal, Pair, GlyphProperties);
+        void set (Pair, GlyphProperties);
 
         Glyph & operator= (Glyph const &);
     };
@@ -42,9 +43,9 @@ namespace pewter {
     struct GlyphSet
     {
         Glyph glyph_default;
-        color::Pair coloration_default;
+        Pair coloration_default;
 
-        GlyphSet (Glyph, color::Pair);
+        GlyphSet (Glyph, Pair);
         GlyphSet (GlyphSet const &);
         GlyphSet & operator= (GlyphSet const &);
     };

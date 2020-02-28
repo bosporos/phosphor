@@ -42,13 +42,9 @@ include(cmake/pewter-build/config.cmake)
 # pwt_file will check the existence of the files before putting them on the compile
 # list, so not-yet-existant files may be present in the following list:
 
-pwt_file("Pewter/Event/Event.cc")
-pwt_file("Pewter/Display/Buffer.cc")
-pwt_file("Pewter/Display/View.cc")
-pwt_file("Pewter/Engine/Frame.cc")
+pwt_file("Pewter/Renderers/TTY/TTY.cc")
+pwt_file("Pewter/Display.cc")
 pwt_file("Pewter/Glyph.cc")
-
-pwt_file("Pewter/Engines/TTY/TTY.cc")
 
 #
 # LIBRARIES

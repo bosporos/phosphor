@@ -25,11 +25,16 @@ Glyph::Glyph (GlyphInternal _gi, GlyphProperties _gp)
     , coloration { default_glyphset ().glyph_default.coloration }
 {}
 
-Glyph::Glyph (GlyphInternal _gi, color::Pair _cp, GlyphProperties _gp)
+Glyph::Glyph (GlyphInternal _gi, Pair _cp, GlyphProperties _gp)
     : inner { _gi }
     , properties { _gp }
     , coloration { _cp }
 {}
+
+void Glyph::set (GlyphInternal _gi)
+{
+    inner = _gi;
+}
 
 void Glyph::set (GlyphInternal _gi, GlyphProperties _gp)
 {
@@ -37,20 +42,20 @@ void Glyph::set (GlyphInternal _gi, GlyphProperties _gp)
     properties = _gp;
 }
 
-void Glyph::set (GlyphInternal _gi, color::Pair _cp)
+void Glyph::set (GlyphInternal _gi, Pair _cp)
 {
     inner      = _gi;
     coloration = _cp;
 }
 
-void Glyph::set (GlyphInternal _gi, color::Pair _cp, GlyphProperties _gp)
+void Glyph::set (GlyphInternal _gi, Pair _cp, GlyphProperties _gp)
 {
     inner      = _gi;
     coloration = _cp;
     properties = _gp;
 }
 
-void Glyph::set (color::Pair _cp, GlyphProperties _gp)
+void Glyph::set (Pair _cp, GlyphProperties _gp)
 {
     coloration = _cp;
     properties = _gp;
@@ -64,7 +69,7 @@ Glyph & Glyph::operator= (Glyph const & rhs)
     return *this;
 }
 
-GlyphSet::GlyphSet (Glyph _gd, color::Pair _cd)
+GlyphSet::GlyphSet (Glyph _gd, Pair _cd)
     : glyph_default { _gd }
     , coloration_default { _cd }
 {}
@@ -82,7 +87,7 @@ GlyphSet & GlyphSet::operator= (GlyphSet const & rhs)
     return *this;
 }
 
-GlyphSet pewter::_glyphset_default (0, color::Pair (0, 0));
+GlyphSet pewter::_glyphset_default (0, Pair (0, 0));
 
 GlyphSet & pewter::default_glyphset ()
 {

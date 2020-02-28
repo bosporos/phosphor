@@ -3,83 +3,69 @@
 // author Maximilien M. Cura
 //
 
-#include <Pewter/Engines/TTY/TTY>
+#include <Pewter/Display>
+#include <Pewter/Renderers/TTY/TTY>
 
 #include <unistd.h>
 #include <stdio.h>
 
-using namespace pewter::engines::tty;
+using namespace pewter;
+namespace tty = pewter::render::tty;
 
 int main (int argc, char ** argv)
 {
-    TTYGlyphMapping tty_gm;
-    tty_gm.map (0, u8"#");
-    tty_gm.map (1, u8" ");
-    tty_gm.map (2, u8"@");
+    tty::TTYGlyphMapping glym;
 
-    TTYOutputManager tty_om (&tty_gm);
-    tty_om.init (STDOUT_FILENO, false);
+    tty::TTYRenderer renderer (STDOUT_FILENO, &glym);
+    renderer.init ();
 
-    tty_om.enter_raw_state ();
-    tty_om.echo (false, false);
+    Display display (renderer.current_size);
+    Layer primary_layer (display.box);
 
-    pewter::Glyph clear (1);
-    pewter::Glyph player (2);
+    display.layers.push_back (&primary_layer);
+    display.layer_order.push_back (&primary_layer);
 
-    pewter::GlyphSet gs (clear, pewter::color::Pair (0, 0, 0, 255, 255, 255));
+    glym.map (0, " ");
+    glym.map (1, "@");
 
-    pewter::set_default_glyphset (gs);
+    display.mask_layer (&primary_layer, true);
 
-    pewter::event::EventRegistry ev_er;
-    pewter::display::Buffer pbuf;
-    pewter::math::Rect<pewter::display::DisplayCoordinate> bounding_box (
-        pewter::math::Point<pewter::display::DisplayCoordinate> (0, 0),
-        tty_om.size ());
-    pbuf.allocate_buffers (bounding_box);
-    pewter::display::View view (bounding_box, &ev_er);
-    view.add_buffer (&pbuf);
-
-    TTYFrame tty_frame (&view, &tty_om);
-
-    pbuf.mask_all (true);
-
-    int x = 0, y = 0, xold = 0, yold = 0;
-
-    int should_close = false;
-
-    for (int i = 0; i < bounding_box.size.y; i++) {
-        for (int j = 0; j < bounding_box.size.x; j++) {
-            printf (".");
-        }
-        // printf ("\n");
+    for (int i = 0; i < (renderer.current_size.x * renderer.current_size.y); i++) {
+        primary_layer.layer_glyph_buffer[i] = Glyph (1, Pair (255, 0, 0, 0, 0, 0));
     }
-    printf ("Window: (%lli, %lli)", bounding_box.size.x, bounding_box.size.y);
 
+    Color c (255, 0, 0);
+    printf ("COLOR: %xu (%i %i %i %i)", c.raw, c.ordered.alpha, c.ordered.red, c.ordered.green, c.ordered.blue);
     fgetc (stdin);
 
-    tty_om.escape ("1;1H");
+    renderer.render_full (&display);
 
-    while (!should_close) {
-        pbuf.glyph_buffer[yold * bounding_box.size.x + xold] = clear;
-        pbuf.glyph_buffer[y * bounding_box.size.x + x]       = player;
-        pbuf.dirty (pewter::math::Point<pewter::display::DisplayCoordinate> (x, y), true);
+    Point<DisplayCoord> pos (40, 20), oldpos (39, 20);
 
-        tty_frame.update ();
+    while (true) {
+        display.at (&primary_layer, oldpos).set (0, Glyph::PROPERTY_DEFAULT_COLOR_MASK);
+        display.at (&primary_layer, pos).set (1, Glyph::PROPERTIES_NONE);
+        display.needs_update (&primary_layer, oldpos);
+        display.needs_update (&primary_layer, pos);
+
+        renderer.render_deltas (&display);
 
         int c = fgetc (stdin);
-        if (c == 'q')
-            should_close = true;
-        if (c == '4')
-            x = (x - 1) % bounding_box.size.x;
-        if (c == '6')
-            x = (x + 1) % bounding_box.size.x;
+
+        oldpos = pos;
         if (c == '8')
-            y = (y - 1) % bounding_box.size.y;
+            pos.y--;
         if (c == '2')
-            y = (y + 1) % bounding_box.size.y;
+            pos.y++;
+        if (c == '4')
+            pos.x--;
+        if (c == '6')
+            pos.x++;
+        if (c == 'q')
+            break;
     }
 
-    tty_om.close ();
+    renderer.close ();
 
     return 0;
 }
