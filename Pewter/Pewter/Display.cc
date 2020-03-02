@@ -63,11 +63,13 @@ void Display::mask_box_on_layer (Layer * _layer, Rect<DisplayCoord> _box, bool _
                     auto _iter = this->layer_order.begin ();
                     std::advance (_iter, _layer->order);
                     for (; _iter != this->layer_order.end (); _iter++) {
-                        const DisplayCoord _foreign_offset = mx - ((*_iter)->box.origin.x - ox) + (*_iter)->box.size.x * (my - ((*_iter)->box.origin.y - oy));
-                        if ((*_iter)->layer_mask_buffer[_foreign_offset]) {
-                            _delta.what                              = &(*_iter)->layer_glyph_buffer[_foreign_offset];
-                            this->layer_index_buffer[_global_offset] = (*_iter)->order;
-                            break;
+                        if ((*_iter)->box.contains (_delta.where)) {
+                            const DisplayCoord _foreign_offset = mx - ((*_iter)->box.origin.x - ox) + (*_iter)->box.size.x * (my - ((*_iter)->box.origin.y - oy));
+                            if ((*_iter)->layer_mask_buffer[_foreign_offset]) {
+                                _delta.what                              = &(*_iter)->layer_glyph_buffer[_foreign_offset];
+                                this->layer_index_buffer[_global_offset] = (*_iter)->order;
+                                break;
+                            }
                         }
                     }
 
@@ -101,12 +103,17 @@ void Display::mask_box_on_layer (Layer * _layer, Rect<DisplayCoord> _box, bool _
 
 Glyph & Display::at (Layer * _layer, Point<DisplayCoord> _where)
 {
-    return _layer->layer_glyph_buffer[_where.x + _where.y * box.size.x];
+    // return _layer->layer_glyph_buffer[_where.x - _layer->box.origin.x + ((_where.y - _layer->box.origin.y) * _layer->box.size.x)];
+    return at (_layer, _where.x, _where.y);
 }
+
+// #include <stdio.h>
 
 Glyph & Display::at (Layer * _layer, DisplayCoord _x, DisplayCoord _y)
 {
-    return _layer->layer_glyph_buffer[_x + _y * box.size.x];
+    int tr = _x - _layer->box.origin.x + ((_y - _layer->box.origin.y) * _layer->box.size.x);
+    // printf ("Translation: (%i %i / %i %i / %i %i) -> %i\n", _x, _y, _layer->box.origin.x, _layer->box.origin.x, _layer->box.size.x, _layer->box.size.y, tr);
+    return _layer->layer_glyph_buffer[tr];
 }
 
 void Display::needs_update (Layer * _layer, Point<DisplayCoord> _where)

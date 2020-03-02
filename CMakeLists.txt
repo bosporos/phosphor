@@ -32,6 +32,7 @@ include (cmake/phosphor-central-build/central.cmake)
 # Declaration of subprojects
 #
 
+phos_add_proj("Stormbreak")
 phos_add_proj("Pewter")
 
 # Venice, abbr. vnz

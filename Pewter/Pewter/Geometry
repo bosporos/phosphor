@@ -49,6 +49,11 @@ namespace pewter {
             , size { _orig.size }
         {}
 
+        bool contains (Point<T> rhs)
+        {
+            return (rhs.x >= origin.x && rhs.y >= origin.y && rhs.x < (origin.x + size.x) && rhs.y < (origin.y + size.y));
+        }
+
         Rect<T> & operator= (Rect<T> const & rhs)
         {
             origin = rhs.origin;

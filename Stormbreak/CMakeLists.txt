@@ -17,51 +17,38 @@ project(STORMBREAK
     LANGUAGES CXX
 )
 
-message(STATUS "Pewter using phosphor root: ${phos_root}")
+message(STATUS "Stormbreak using phosphor root: ${phos_root}")
 message(STATUS "Building Stormbreak version ${PROJECT_VERSION}")
 
-# NO OPTIONS (yet) -- stormbreak/cmake/stormbreak-build/options.cmake
+include (stb-preamble.cmake)
 
-# STORMBREAK -- stormbreak/cmake/stormbreak-build/stormbreak.cmake
+#
+# SOURCE FILES
+#
 
-set(stb_root "${phos_root}/Stormbreak")
-message(STATUS "Stormbreak root: ${stb_root}")
-set(stb_clangfile_dir "${stb_root}/clang")
-# set(stb_templatefile_dir "${pwt_root}/templates")
+stb_file("STB/STB.cc")
 
-set(stb_sources "")
-set(stb_libraries "")
+#
+# LIBRARIES
+#
 
-function(stb_file file)
-    if(EXISTS "${stb_root}/${file}")
-        list(APPEND stb_sources "${stb_root}/${file}")
-        set(stb_sources ${stb_sources} PARENT_SCOPE)
-    else()
-        message(NOTICE "Could not find file: ${file}")
-    endif()
-endfunction()
+list(APPEND stb_libraries stdc++ venice pewter)
 
-# TEMPLATES
+# EXECUTABLE
 
-# configure_file(
-#     "${stb_templatefile_dir}/Stormbreak.h.in"
-#     "Stb/Stb"
-# )
+string(APPEND CMAKE_CXX_FLAGS "${stb_flags_cxx}")
 
-# CONFIG -- stormbreak/cmake/stormbreak-build/config.cmake
+add_executable(stormbreak)
 
-set(stb_flags_cxx_optfile "${stb_clangfile_dir}/${phos_build_type}/flags-cxx.txt")
+string(REPLACE "${stb_root}" "\n\t@" stb_sources_pretty "${stb_sources}")
+message(STATUS "Sources: ${stb_sources_pretty}")
 
-set(_stb_internal_diagnostic_supporting_compilers "Clang" "AppleClang" "GNU")
+target_sources(stormbreak PRIVATE ${stb_sources})
+set_property(TARGET stormbreak PROPERTY CXX_STANDARD_20)
 
-set(stb_flags_global_cxx "")
+target_include_directories(stormbreak PUBLIC "${stb_root}")
+target_include_directories(stormbreak PUBLIC "${phos_root}/Venice")
+target_include_directories(stormbreak PUBLIC "${phos_root}/Pewter")
+target_include_directories(stormbreak PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 
-if(${phos_build_type} STREQUAL Debug)
-    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
-        string(APPEND stb_flags_global_cxx "-fdiagnostics-color=always")
-    else()
-        string(APPEND stb_flags_global_cxx "-fcolor-diagnostics")
-    endif()
-endif()
-
-set(stb_flags_cxx "")
+target_link_libraries(stormbreak PRIVATE ${stb_libraries})

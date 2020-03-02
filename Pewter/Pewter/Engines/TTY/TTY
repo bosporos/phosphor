@@ -1,0 +1,79 @@
+// -*- mode: c++ -*-
+
+//
+// project pewter
+// author Maximilien M. Cura
+//
+
+#ifndef __PEWTER_TTY_ENGINE
+#define __PEWTER_TTY_ENGINE
+
+#include <Venice/Math/Integers>
+#include <Pewter/Display>
+#include <Pewter/Glyph>
+#include <Pewter/Input>
+
+#include <map>
+
+#include <termios.h>
+
+namespace pewter::engine::tty {
+    ;
+
+    struct TTYGlyphMapping
+    {
+        std::map<::pewter::GlyphInternal, const char *> mapping;
+
+        void map (::pewter::GlyphInternal, const char *);
+        const char * mapped (::pewter::GlyphInternal);
+    };
+
+    struct TTY
+    {
+        vnz::math::_i32 out_fd;
+        vnz::math::_i32 bl_in_fd;
+        vnz::math::_i32 nb_in_fd;
+
+        struct termios tty_initial_state;
+        struct termios tty_current_state;
+
+        TTY (vnz::math::_i32 out_fd, vnz::math::_i32 in_fd);
+        ~TTY ();
+
+        void enter_raw_state ();
+        void restore_state ();
+
+        Key read ();
+        Key read_nb ();
+
+        void escape (const char * fmt, ...);
+        Point<DisplayCoord> measure ();
+    };
+
+    struct TTYRenderer
+        : public Renderer
+    {
+        Point<DisplayCoord> current_size { 0, 0 };
+
+        TTYGlyphMapping * glyph_mapping;
+        TTY * tty;
+
+        bool is_alt = false;
+
+        ResizingBuffer<bool> delta_cache;
+
+        TTYRenderer (TTYGlyphMapping *, TTY *);
+        ~TTYRenderer ();
+
+        void notify_of_size_change ();
+        // b/c needs GlyphMapping therefore is part of the Render complex.
+        void render_glyph (Glyph *);
+
+        virtual void init ();
+        virtual void close ();
+        virtual void render_deltas (Display *);
+        virtual void render_full (Display *);
+    };
+}
+
+#endif /* !@__PEWTER_TTY_ENGINE */

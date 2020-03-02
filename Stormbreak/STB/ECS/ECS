@@ -1,0 +1,274 @@
+// -*- mode: c++ -*-
+
+//
+// project stormbreak
+// author Maximilien M. Cura
+//
+
+#ifndef __STB_ECS
+#define __STB_ECS
+
+#include <Venice/Math/Integers>
+#include <Venice/Option/Option>
+
+#include <unordered_map>
+#include <map>
+#include <queue>
+#include <type_traits>
+#include <bitset>
+#include <string.h>
+
+namespace STB::ECS {
+    typedef vnz::math::_usize Entity;
+
+    template <unsigned N>
+    using TComponentMask = std::bitset<N>;
+
+    template <unsigned N, unsigned K>
+    struct EntityComponentMaskBucket
+    {
+        TComponentMask<N> masks[K];
+
+        TComponentMask<N> mask_at_offset (unsigned k)
+        {
+            return masks[k];
+        }
+
+        void mask_at_offset (unsigned k, TComponentMask<N> ecm)
+        {
+            masks[k] = ecm;
+        }
+    };
+
+    template <unsigned N, unsigned K>
+    struct World
+    {
+        typedef TComponentMask<N> ComponentMask;
+        static constexpr TComponentMask<N> NonexistentComponentMask = 1;
+
+        static const unsigned _N = N;
+        static const unsigned _K = K;
+
+        std::unordered_map<Entity, EntityComponentMaskBucket<N, K> *> bucket_list;
+        std::queue<Entity> freed_entities;
+        Entity next_entity = 0;
+
+        World ()
+        {}
+        ~World ()
+        {
+            for (std::pair<Entity, EntityComponentMaskBucket<N, K> *> bucket : bucket_list) {
+                // kick the bucket
+                delete bucket.second;
+            }
+        }
+
+        Entity create_entity (TComponentMask<N> ecm = TComponentMask<N> ())
+        {
+            if (freed_entities.size ()) {
+                Entity e_id = freed_entities.front ();
+                freed_entities.pop ();
+                bucket_list[e_id / N]->mask_at_offset (e_id % N, ecm);
+                return e_id;
+            } else {
+                if (0 == (next_entity % N))
+                    bucket_list[next_entity / N] = new EntityComponentMaskBucket<N, K>;
+                bucket_list[next_entity / N]->mask_at_offset (next_entity % N, ecm);
+                return next_entity++;
+            }
+        }
+
+        void destroy_entity (Entity e_id)
+        {
+            if (bucket_list.contains (e_id / N)) {
+                freed_entities.push (e_id);
+                bucket_list[e_id / N]->mask_at_offset (e_id % N, World<N, K>::NonexistentComponentMask);
+            }
+        }
+
+        TComponentMask<N> mask (Entity e_id)
+        {
+            if (!bucket_list.contains (e_id))
+                // out of range, die
+                abort ();
+            return bucket_list[e_id / N]->mask_at_offset (e_id % N);
+        }
+
+        void mask (Entity e_id, TComponentMask<N> ecm)
+        {
+            if (!bucket_list.contains (e_id))
+                // out of range, die
+                abort ();
+            bucket_list[e_id / N]->mask_at_offset (e_id % N, ecm);
+        }
+    };
+
+    template <class T>
+    struct ComponentStorage
+    {
+        virtual void set_component (Entity, T *) = 0;
+        virtual T * get_component (Entity)       = 0;
+        virtual void destroy_component (Entity)  = 0;
+        virtual bool has_component (Entity)      = 0;
+    };
+
+    template <class T>
+    struct StandardComponentStorage
+        : public ComponentStorage<T>
+    {
+        std::unordered_map<Entity, T *> inner;
+
+        virtual void set_component (Entity e, T * component)
+        {
+            inner[e] = component;
+        }
+
+        virtual T * get_component (Entity e)
+        {
+            if (inner.contains (e))
+                return inner[e];
+            return nullptr;
+        }
+
+        virtual void destroy_component (Entity e)
+        {
+            if (inner.contains (e)) {
+                inner[e]->destroy ();
+                inner.erase (e);
+            }
+        }
+
+        virtual bool has_component (Entity e)
+        {
+            return inner.contains (e);
+        }
+    };
+
+    template <class T>
+    concept ComponentWithStorage = std::is_base_of<ComponentStorage<T>, typename T::Storage>::value;
+
+    template <ComponentWithStorage T>
+    struct ComponentManager
+    {
+        typedef T::Storage StorageType;
+
+        static StorageType & storage ()
+        {
+            static StorageType storage_obj;
+            return storage_obj;
+        }
+
+        static void try_add (Entity e, T * component)
+        {
+            if (storage ().has_component (e))
+                storage ().set_component (e, component);
+        }
+
+        static T * get (Entity e)
+        {
+            return storage ().get_component (e);
+        }
+
+        static void try_destroy (Entity e)
+        {
+            storage ().destroy_component (e);
+        }
+
+        static bool has (Entity e)
+        {
+            return storage ().has_component (e);
+        }
+    };
+
+    template <unsigned N, unsigned K>
+    struct _SystemImplBase
+    {
+        _SystemImplBase (TComponentMask<N> ecm)
+            : mask { ecm }
+        {}
+
+        virtual void run_on (Entity e, World<N, K> &) = 0;
+        const TComponentMask<N> mask;
+    };
+
+    typedef vnz::math::_usize SystemRegistrationID;
+
+    struct SystemRegistrationNameComparator
+    {
+        bool operator() (const char * lhs, const char * rhs) const
+        {
+            return strcmp (lhs, rhs) < 0;
+        }
+    };
+
+    template <unsigned N, unsigned K>
+    struct SystemRegistrar
+    {
+        static SystemRegistrar<N, K> & instance ()
+        {
+            static SystemRegistrar<N, K> registrar;
+            return registrar;
+        }
+
+        std::unordered_map<SystemRegistrationID, _SystemImplBase<N, K> *> ledger;
+        std::map<const char *, SystemRegistrationID, SystemRegistrationNameComparator> system_names;
+        SystemRegistrationID next_id = 0;
+
+        SystemRegistrationID register_system (const char * _name, _SystemImplBase<N, K> * _object)
+        {
+            system_names[_name] = next_id;
+            ledger[next_id]     = _object;
+
+            return next_id++;
+        }
+
+        void run_system (SystemRegistrationID srid, World<N, K> & world)
+        {
+            if (ledger.contains (srid)) {
+                this->run_system (ledger[srid], world);
+            } else {
+                // boom.
+                abort ();
+            }
+        }
+
+        void run_system (const char * name, World<N, K> & world)
+        {
+            if (system_names.contains (name)) {
+                this->run_system (ledger[system_names[name]], world);
+            } else {
+                // boom.
+                abort ();
+            }
+        }
+
+        void run_system (_SystemImplBase<N, K> * _system, World<N, K> & world)
+        {
+            Entity eid = 0;
+            for (std::pair<Entity, EntityComponentMaskBucket<N, K> *> bucket : world.bucket_list) {
+                for (unsigned i = 0; i < K; i++) {
+                    if ((bucket.second->masks[i] & _system->mask) == _system->mask) {
+                        _system->run_on (eid, world);
+                    }
+                    ++eid;
+                }
+            }
+        }
+    };
+
+#define STBDeclSystem(_Name_, _Mask_, _World_)                                                                                                                                          \
+    struct _Name_ : public ::STB::ECS::_SystemImplBase<decltype (_World_)::_N, decltype (_World_)::_K>                                                                                  \
+    {                                                                                                                                                                                   \
+        _Name_ ();                                                                                                                                                                      \
+        constexpr static ::STB::ECS::TComponentMask<decltype (_World_)::_N> _Mask = _Mask_;                                                                                             \
+        const static ::STB::ECS::SystemRegistrationID ID;                                                                                                                               \
+        virtual void run_on (::STB::ECS::Entity e, decltype (_World_) &);                                                                                                               \
+    };                                                                                                                                                                                  \
+    _Name_::_Name_ ()                                                                                                                                                                   \
+        : _SystemImplBase (_Mask_)                                                                                                                                                      \
+    {}                                                                                                                                                                                  \
+    const ::STB::ECS::SystemRegistrationID _Name_::ID = ::STB::ECS::SystemRegistrar<decltype (_World_)::_N, decltype (_World_)::_K>::instance ().register_system (#_Name_, new _Name_); \
+    void _Name_::run_on (::STB::ECS::Entity _STBSystem_Entity, decltype (_World_) & _STBSystem_World)
+}
+
+#endif /* !@__STB_ECS */
