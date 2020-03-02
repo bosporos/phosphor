@@ -14,6 +14,9 @@
 #include <Pewter/Glyph>
 
 #include <STB/Physics>
+#include <STB/Interactions>
+#include <STB/Time>
+#include <list>
 
 namespace STB {
     struct GuiseComponent
@@ -42,9 +45,42 @@ namespace STB {
 
         virtual void destroy () {}
 
-        virtual Weight get_weight ()   = 0;
-        virtual Vector get_velocity () = 0;
-        virtual Size get_size ()       = 0;
+        virtual Physics::Weight get_weight ()   = 0;
+        virtual Physics::Vector get_velocity () = 0;
+        virtual Physics::Size get_size ()       = 0;
+    };
+
+    struct InteractionComponent
+    {
+        static constexpr World::ComponentMask = 4;
+        typedef ECS::StandardComponentStorage<PhysicsComponent> Storage;
+
+        virtual void destroy () {}
+    };
+
+    struct TimeComponent
+    {
+        static constexpr World::ComponentMask = 5;
+        typedef ECS::StandardComponentStorage<PhysicsComponent> Storage;
+
+        virtual void destroy () {}
+
+        Time::Energy time_energy;
+        Time::Energy time_energy_to_move;
+
+        Time::Experience timeflow_state;
+        // The debt owed to those who watch over time?
+        Time::Experience timeflow_debt;
+    };
+
+    struct ContainerComponent
+    {
+        static constexpr World::ComponentMask = 6;
+        typedef ECS::StandardComponentStorage<PhysicsComponent> Storage;
+
+        virtual void destroy () {}
+
+        std::list<Entity> contained_entities;
     };
 }
 
