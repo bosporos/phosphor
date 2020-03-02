@@ -1,0 +1,55 @@
+First day of my first 7drl!
+
+Didn't have as much time as I wanted--ballroom ate my afternoon.
+
+I got the ECS core working--it's a little janky and I don't like passing around <N,K>
+to so many objects, but I guess it works.
+
+TTY Renderer is up, so now the next orders of business are the component definitions
+and the UI. Struggling a little bit to figure out the order to build them, but it
+looks like Components are going to have to come first, as the UI depends on the
+AppearanceComponent.
+
+Planned components at the moment:
+
+- AppearanceComponent
+    how the entity appears on screen. object stacks and visibility are implemented at the map aggregator level.
+- PhysicsComponent
+    the entity's size, mass, velocity, etc.
+- InteractionComponent
+    the entity's physical interactions with its environment (i.e. collisions, etc.)
+    implemented as a series of shallowly inherited Components carrying different behavior
+        i.e. arrows go through grates, but creatures (usually) can't -- unless they're small or phasing
+- TimeComponent
+    the way the entity experiences time
+    implemented as "energy" gained per "tick" of the system
+        note: even flying objects use this trick, although they have special interaction behavior
+            (trace a path during a single turn, only visible for entities below a certain time-flow rate)
+            basically, we're going to have the Matrix Dodge
+- ContainerComponent
+    the way that entities can be stored in other entities
+    at the moment, this means:
+        spell effect entities (i.e. Dazzles)
+        objects on tiles
+        objects in inventory
+        objects in boxes/containers
+        monsters in traps
+        traps and effects on tiles
+- KnowledgeComponent
+    the knowledge that a given entity has
+    for inanimate objects, that can be a number of different things, but usually somehow made
+        accessible to the player (i.e. spell knowledge in a book entity)
+- AttributesComponent
+    the stats of a creature entity (i.e. Int, Wis, Cha, etc.)
+- AfflictionsComponent
+    temporary, semi-permanent and permanent bonuses, buffs, resistances, status effects, hungers, counters, etc.
+- SpiritualComponent
+    the spirit (entities?) bound to an entity
+- IdentityComponent
+    the "identity" of an object
+- ThreadComponent
+    stores Quintessence, Essence, Aura, etc. of entities, etc.
+- ConditionComponent
+    the physical condition of an entity
+- AIComponent
+    how the entity behaves

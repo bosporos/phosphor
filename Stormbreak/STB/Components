@@ -1,0 +1,51 @@
+// -*- mode: c++ -*-
+
+//
+// project stormbreak
+// author Maximilien M. Cura
+//
+
+#ifndef __STB_COMPONENTS
+#define __STB_COMPONENTS
+
+#include <STB/ECS/ECS>
+#include <STB/Setup>
+
+#include <Pewter/Glyph>
+
+#include <STB/Physics>
+
+namespace STB {
+    struct GuiseComponent
+    {
+        static constexpr World::ComponentMask Mask = 2;
+        typedef ECS::StandardComponentStorage<GuiseComponent> Storage;
+
+        virtual void destroy () {}
+
+        virtual pewter::Glyph guise () = 0;
+    };
+
+    struct StandardGuiseComponent
+        : GuiseComponent
+    {
+        pewter::Glyph inner;
+
+        virtual pewter::Glyph guise ();
+        virtual void set_guise (pewter::Glyph);
+    };
+
+    struct PhysicsComponent
+    {
+        static constexpr World::ComponentMask = 3;
+        typedef ECS::StandardComponentStorage<PhysicsComponent> Storage;
+
+        virtual void destroy () {}
+
+        virtual Weight get_weight ()   = 0;
+        virtual Vector get_velocity () = 0;
+        virtual Size get_size ()       = 0;
+    };
+}
+
+#endif /* !@__STB_COMPONENTS */
