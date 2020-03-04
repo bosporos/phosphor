@@ -1,0 +1,25 @@
+// -*- mode: c++ -*_
+
+//
+// project stormbreak
+// author Maximilien M. Cura
+//
+
+#ifndef __STB_LOGGING
+#define __STB_LOGGING
+
+#include <stdio.h>
+
+namespace STB {
+    struct Logger
+    {
+        FILE * fd;
+
+        Logger (const char * path);
+        ~Logger ();
+
+        void log (const char * fmt, ...);
+    };
+}
+
+#endif /* !@__STB_LOGGING */

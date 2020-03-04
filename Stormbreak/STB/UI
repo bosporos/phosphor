@@ -1,0 +1,80 @@
+// -*- mode: c++ -*-
+
+//
+// project stormbreak
+// author Maximilien M. Cura
+//
+
+#ifndef __STB_UI
+#define __STB_UI
+
+#include <Pewter/Color>
+#include <Pewter/Display>
+#include <Pewter/Glyph>
+#include <Pewter/Input>
+#include <Pewter/Engines/TTY/TTY>
+
+namespace STB {
+    pewter::engine::tty::TTYGlyphMapping glyph_mapping;
+
+    struct Menu
+    {
+        struct Item
+        {
+            const char * item_label;
+        };
+
+        std::vector<Item> menu_items;
+    };
+
+    struct MenuUI
+    {
+        pewter::Layer menu_layer;
+
+        void ui_sizechange (pewter::Rect<pewter::DisplayCoord>);
+
+        vnz::math::_usize ui_menu (Menu);
+    };
+
+    struct Notice
+    {
+        const char * notice_string;
+    };
+
+    struct NoticeHistory
+    {
+        std::deque<Notice> history;
+        Logger logger;
+
+        NoticeHistory (const char * backing_file);
+        // Save all remaining notices to the backing file
+        ~NoticeHistory ();
+
+        void push_notice (Notice notice);
+        void pop_notice_to_backing_file ();
+    };
+
+    struct NoticeQueue
+    {
+        std::queue<Notice> notices;
+        vnz::math::_usize notice_index;
+
+        void clear_queue ();
+        const char * pull_characters (vnz::math::_usize);
+    };
+
+    struct NoticeUI
+    {
+        pewter::Layer notice_layer;
+
+        NoticeQueue notice_queue;
+        NoticeHistory notice_history;
+
+        void ui_sizechange (pewter::Rect<pewter::DisplayCoord>);
+        void ui_display_as_line ();
+        void ui_display_as_pane ();
+    };
+
+}
+
+#endif /* !@__STB_UI */

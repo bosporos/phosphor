@@ -26,6 +26,8 @@ include (stb-preamble.cmake)
 # SOURCE FILES
 #
 
+stb_file("STB/UI.cc")
+stb_file("STB/ECS.cc")
 stb_file("STB/STB.cc")
 
 #

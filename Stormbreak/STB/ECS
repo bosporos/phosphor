@@ -16,11 +16,11 @@
 #include <stack>
 #include <set>
 
-namespace STB::ECS {
+namespace STB {
     typedef vnz::math::_usize EntityID;
     typedef vnz::math::_usize EntityFamilyID;
 
-    const EntityFamilyID DummyFamilyID;
+    extern const EntityFamilyID DummyFamilyID;
 
     // So, a couple quick notes.
     // This system is designed so that a specific types of entities get to live in the runtime, and behaviours, etc.
@@ -30,7 +30,7 @@ namespace STB::ECS {
     struct EntityManager
     {
         std::unordered_map<EntityID, EntityFamilyID> entity_mapping = {};
-        std::stack<EntityID> free_entities_stack                    = {};
+        std::stack<EntityID> free_entity_stack                      = {};
         EntityID next_entity                                        = 1;
 
         EntityID create_entity (EntityFamilyID = DummyFamilyID);
@@ -38,7 +38,7 @@ namespace STB::ECS {
         void destroy_entity (EntityID);
 
         void family (EntityID, EntityFamilyID);
-        EntityFamilyId family (EntityID);
+        EntityFamilyID family (EntityID);
     };
 
     template <class T>
@@ -68,7 +68,7 @@ namespace STB::ECS {
         {
             if (LIKELY (has_component (_entity_id)))
                 return component_mapping ()[_entity_id];
-            return vnz::option::None;
+            return vnz::option::None ();
         }
 
         static void destroy_component (EntityID _entity_id)
@@ -103,15 +103,13 @@ namespace STB::ECS {
     {
         SystemImplementationFn system_impl;
         std::set<EntityFamilyID> system_applicable_families = {};
-        const char * system_name;
 
         SystemStub (SystemImplementationFn);
 
         void system_applies_to (EntityFamilyID, bool);
         bool system_applies_to (EntityFamilyID) const;
-        const char * system_name () const;
 
-        virtual void system_run (EntityID, World &) = 0;
+        void system_run (EntityID, World &);
     };
 
     typedef vnz::math::_usize SystemRegistrationID;
@@ -119,6 +117,7 @@ namespace STB::ECS {
     struct SystemManager
     {
         static std::unordered_map<SystemRegistrationID, SystemStub *> system_mapping;
+        static SystemRegistrationID next_registration_id;
 
         static SystemRegistrationID register_system (SystemStub *);
         static SystemStub * system (SystemRegistrationID);
