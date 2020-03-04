@@ -75,6 +75,7 @@ namespace STB {
         void ui_display_as_pane ();
     };
 
+    // no string input yet...
 }
 
 #endif /* !@__STB_UI */
