@@ -15,19 +15,19 @@
 using namespace pewter;
 using namespace pewter::engine::tty;
 
-void TTYGlyphMapping::map (GlyphInternal _gi, const char * str)
-{
-    mapping[_gi] = str;
-}
+// void TTYGlyphMapping::map (GlyphInternal _gi, const char * str)
+// {
+//     mapping[_gi] = str;
+// }
+//
+// const char * TTYGlyphMapping::mapped (GlyphInternal _gi)
+// {
+//     return mapping[_gi];
+// }
 
-const char * TTYGlyphMapping::mapped (GlyphInternal _gi)
-{
-    return mapping[_gi];
-}
-
-TTYRenderer::TTYRenderer (TTYGlyphMapping * ttgm, TTY * _tty)
-    : glyph_mapping { ttgm }
-    , tty { _tty }
+TTYRenderer::TTYRenderer (/*TTYGlyphMapping * ttgm,*/ TTY * _tty)
+    : /*glyph_mapping { ttgm }, */
+    tty { _tty }
     , delta_cache (Rect<DisplayCoord> (0, 0, 0, 0))
 {}
 
@@ -43,28 +43,28 @@ void TTYRenderer::notify_of_size_change ()
     delta_cache.resize (Rect<DisplayCoord> (0, 0, current_size.x, current_size.y));
 }
 
-void TTYRenderer::render_glyph (Glyph * glyph)
+void TTY::render_glyph (Glyph * glyph)
 {
     if (glyph == nullptr) {
-        tty->escape ("0m");
-        write (tty->out_fd, " ", 1);
+        /*tty->*/ escape ("0m");
+        write (/*tty->*/ out_fd, " ", 1);
         return;
     }
 
     // First, color
     if (glyph->properties & Glyph::PROPERTY_DEFAULT_COLOR_MASK) {
-        tty->escape ("0m");
+        /*tty->*/ escape ("0m");
         // dprintf (tty->out_fd, "\x1b[0m");
     }
     Color fg = glyph->coloration.foreground, bg = glyph->coloration.background;
     // if (flags & TTOM_24COLOR) {
 
     if (!(glyph->properties & Glyph::PROPERTY_DEFAULT_FORE)) {
-        tty->escape ("38;2;%i;%i;%im", fg.ordered.red, fg.ordered.green, fg.ordered.blue);
+        /*tty->*/ escape ("38;2;%i;%i;%im", fg.ordered.red, fg.ordered.green, fg.ordered.blue);
         // dprintf (tty->out_fd, "\x1b[38;2;%i;%i;%im", fg.ordered.red, fg.ordered.green, fg.ordered.blue);
     }
     if (!(glyph->properties & Glyph::PROPERTY_DEFAULT_BACK)) {
-        tty->escape ("48;2;%i;%i;%im", bg.ordered.red, bg.ordered.green, bg.ordered.blue);
+        /*tty->*/ escape ("48;2;%i;%i;%im", bg.ordered.red, bg.ordered.green, bg.ordered.blue);
         // dprintf (tty->out_fd, "\x1b[48;2;%i;%i;%im", bg.ordered.red, bg.ordered.green, bg.ordered.blue);
     }
 
@@ -88,7 +88,8 @@ void TTYRenderer::render_glyph (Glyph * glyph)
     //     }
     // }
     // tty->printf ((const char *)(glyph_mapping->mapped (glyph->inner)));
-    dprintf (tty->out_fd, (const char *)(glyph_mapping->mapped (glyph->inner)));
+    // dprintf (tty->out_fd, (const char *)(glyph_mapping->mapped (glyph->inner)));
+    write (/*tty->*/ out_fd, &glyph->inner, 1);
     // printf (
     //     "%i -> [%s] (%i %i %i / %i %i %i)\n",
     //     glyph->inner,
@@ -106,7 +107,7 @@ void TTYRenderer::init ()
     tty->measure ();
 
     tty->escape ("?1049h");
-    tty->escape ("?25l");
+    // tty->escape ("?25l");
 
     tty->enter_raw_state ();
 
@@ -115,7 +116,7 @@ void TTYRenderer::init ()
 
 void TTYRenderer::close ()
 {
-    tty->escape ("?25h");
+    // tty->escape ("?25h");
     tty->escape ("?1049l");
 
     tty->restore_state ();
@@ -127,22 +128,47 @@ void TTYRenderer::render_full (Display * display)
 {
     tty->escape ("H");
 
-    const DisplayCoord _offset_final = display->box.size.x * display->box.size.y;
-    for (DisplayCoord i = 0; i < _offset_final; i++) {
-
-        LayerIndex li = display->layer_index_buffer[i];
-        if (li == -1) {
-            this->render_glyph (nullptr);
-        } else {
-            this->render_glyph (
-                &display->layers[li]
-                     ->layer_glyph_buffer[_offset_final]);
+    for (DisplayCoord y = 0; y < display->box.size.y; y++) {
+        for (DisplayCoord x = 0; x < display->box.size.x; x++) {
+            Glyph glyph ('*');
+            for (Layer * layer : display->layers) {
+                if (layer->box.contains (Point<DisplayCoord> (x, y))) {
+                    DisplayCoord offset = (x - layer->box.origin.x)
+                        + (layer->box.size.x * (y - layer->box.origin.y));
+                    if (layer->layer_mask_buffer[offset]) {
+                        tty->render_glyph (&layer->layer_glyph_buffer[offset]);
+                        goto __loopend;
+                    }
+                }
+            }
+            tty->render_glyph (&glyph);
+        __loopend:
+            continue;
         }
-
-        // this->render_glyph (
-        // &display->layers[display->layer_index_buffer[i]]
-        // ->layer_glyph_buffer[_offset_final]);
     }
+
+    // const DisplayCoord _offset_final = display->box.size.x * display->box.size.y;
+    // for (DisplayCoord i = 0; i < _offset_final; i++) {
+    //
+    //     // LayerIndex li = display->layer_index_buffer[i];
+    //     // if (li == -1) {
+    //     //     Glyph glyph ('!');
+    //     //     tty->render_glyph (&glyph);
+    //     //     // /*this*/ tty->render_glyph (nullptr);
+    //     // } else {
+    //     //     Glyph glyph ('0' + li);
+    //     //     tty->render_glyph (&glyph);
+    //     //     // /*this*/ tty->render_glyph (
+    //     //     // &display->layers[li]
+    //     //     // ->layer_glyph_buffer[i]);
+    //     // }
+    //
+    //     // this->render_glyph (
+    //     // &display->layers[display->layer_index_buffer[i]]
+    //     // ->layer_glyph_buffer[_offset_final]);
+    // }
+
+    display->deltas.clear ();
 }
 
 void TTYRenderer::render_deltas (Display * display)
@@ -153,7 +179,18 @@ void TTYRenderer::render_deltas (Display * display)
         display->deltas.pop_back ();
         if (!delta_cache[delta.where.x + delta.where.y * display->box.size.x]) {
             tty->escape ("%i;%iH", delta.where.y + 1, delta.where.x + 1);
-            this->render_glyph (delta.what);
+            // /*this*/ tty->render_glyph (delta.what);
+            for (Layer * layer : display->layers) {
+                if (layer->box.contains (delta.where)) {
+                    DisplayCoord offset = (delta.where.x - layer->box.origin.x) + layer->box.size.x * (delta.where.y - layer->box.origin.y);
+                    if (layer->layer_mask_buffer[offset]) {
+                        tty->render_glyph (&layer->layer_glyph_buffer[offset]);
+                        goto __loopend;
+                    }
+                }
+            }
+        __loopend:
+            continue;
         }
     }
 }
@@ -267,4 +304,9 @@ Point<DisplayCoord> TTY::measure ()
     tmp.y = ws.ws_row;
 
     return tmp;
+}
+
+void TTY::bell ()
+{
+    write (out_fd, "\a", 1);
 }

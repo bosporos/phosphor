@@ -26,9 +26,12 @@ void Display::size_change (Rect<DisplayCoord> _new_size)
     this->layer_index_buffer.resize (this->box);
 }
 
+#include <string.h>
+
 void Display::mask_layer (Layer * _layer, bool _value)
 {
-    this->mask_box_on_layer (_layer, _layer->box, _value);
+    memset (_layer->layer_mask_buffer.inner, true, _layer->box.size.x * _layer->box.size.y);
+    // this->mask_box_on_layer (_layer, _layer->box, _value);
 }
 
 void Display::mask_box_on_layer (Layer * _layer, Rect<DisplayCoord> _box, bool _value)
@@ -88,7 +91,7 @@ void Display::mask_box_on_layer (Layer * _layer, Rect<DisplayCoord> _box, bool _
                     this->deltas.push_back (_delta);
                 }
             } else if (_prev == false and _value == true) {
-                if (_layer->order > this->layer_index_buffer[_global_offset]) {
+                if (_layer->order < this->layer_index_buffer[_global_offset]) {
                     this->layer_index_buffer[_global_offset] = _layer->order;
                     DisplayDelta _delta                      = {
                         Point<DisplayCoord> (mx + ox, my + oy),
@@ -118,7 +121,12 @@ Glyph & Display::at (Layer * _layer, DisplayCoord _x, DisplayCoord _y)
 
 void Display::needs_update (Layer * _layer, Point<DisplayCoord> _where)
 {
-    deltas.push_back ({ _where, &_layer->layer_glyph_buffer[_where.x + _where.y * box.size.x] });
+    return needs_update (_layer, _where.x, _where.y);
+}
+
+void Display::needs_update (Layer * _layer, DisplayCoord _x, DisplayCoord _y)
+{
+    deltas.push_back ({ { _x, _y }, &_layer->layer_glyph_buffer[_x + _y * box.size.x] });
 }
 
 Layer::Layer (Rect<DisplayCoord> _box)
@@ -127,3 +135,11 @@ Layer::Layer (Rect<DisplayCoord> _box)
     , layer_mask_buffer (_box)
     , order { -1 }
 {}
+
+void Layer::clear (Glyph g)
+{
+    const DisplayCoord l = box.size.x * box.size.y;
+    for (DisplayCoord i = 0; i < l; i++) {
+        layer_glyph_buffer[i] = g;
+    }
+}

@@ -12,7 +12,9 @@
 #include <Pewter/Color>
 
 namespace pewter {
-    typedef vnz::math::_u32 GlyphInternal;
+    // typedef vnz::math::_u32 GlyphInternal;
+    typedef char GlyphInternal;
+
     typedef vnz::math::_u32 GlyphProperties;
 
     struct Glyph

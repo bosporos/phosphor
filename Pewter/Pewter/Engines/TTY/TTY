@@ -20,13 +20,13 @@
 namespace pewter::engine::tty {
     ;
 
-    struct TTYGlyphMapping
-    {
-        std::map<::pewter::GlyphInternal, const char *> mapping;
-
-        void map (::pewter::GlyphInternal, const char *);
-        const char * mapped (::pewter::GlyphInternal);
-    };
+    // struct TTYGlyphMapping
+    // {
+    //     std::map<::pewter::GlyphInternal, const char *> mapping;
+    //
+    //     void map (::pewter::GlyphInternal, const char *);
+    //     const char * mapped (::pewter::GlyphInternal);
+    // };
 
     struct TTY
     {
@@ -48,6 +48,9 @@ namespace pewter::engine::tty {
 
         void escape (const char * fmt, ...);
         Point<DisplayCoord> measure ();
+        void render_glyph (Glyph * glyph);
+
+        void bell ();
     };
 
     struct TTYRenderer
@@ -55,19 +58,19 @@ namespace pewter::engine::tty {
     {
         Point<DisplayCoord> current_size { 0, 0 };
 
-        TTYGlyphMapping * glyph_mapping;
+        // TTYGlyphMapping * glyph_mapping;
         TTY * tty;
 
         bool is_alt = false;
 
         ResizingBuffer<bool> delta_cache;
 
-        TTYRenderer (TTYGlyphMapping *, TTY *);
+        TTYRenderer (/* TTYGlyphMapping *, */ TTY *);
         ~TTYRenderer ();
 
         void notify_of_size_change ();
         // b/c needs GlyphMapping therefore is part of the Render complex.
-        void render_glyph (Glyph *);
+        // void render_glyph (Glyph *);
 
         virtual void init ();
         virtual void close ();

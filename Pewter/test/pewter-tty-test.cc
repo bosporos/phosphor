@@ -16,16 +16,16 @@ void tty_main ();
 
 int main (int argc, char ** argv)
 {
-    tty::TTYGlyphMapping glym;
-    glym.map (0, " ");
-    glym.map (1, "@");
+    // tty::TTYGlyphMapping glym;
+    // glym.map (0, " ");
+    // glym.map (1, "@");
 
-    GlyphSet gs (Glyph (0, Pair (0xff, 0xff, 0xff, 0, 0, 0)), Pair (0xff, 0xff, 0xff, 0, 0, 0));
+    GlyphSet gs (Glyph (' ', Pair (0xff, 0xff, 0xff, 0, 0, 0)), Pair (0xff, 0xff, 0xff, 0, 0, 0));
     set_default_glyphset (gs);
 
     tty::TTY tty (STDOUT_FILENO, STDIN_FILENO);
 
-    tty::TTYRenderer renderer (&glym, &tty);
+    tty::TTYRenderer renderer (/*&glym,*/ &tty);
     renderer.notify_of_size_change ();
     renderer.init ();
 
@@ -38,7 +38,7 @@ int main (int argc, char ** argv)
     display.mask_layer (&primary_layer, true);
 
     for (int i = 0; i < (renderer.current_size.x * renderer.current_size.y); i++) {
-        primary_layer.layer_glyph_buffer[i] = Glyph (1, Pair (255, 0, 0, 0, 0, 0));
+        primary_layer.layer_glyph_buffer[i] = Glyph (' ', Pair (255, 0, 0, 0, 0, 0));
     }
 
     // Color c (255, 0, 0);
@@ -51,8 +51,8 @@ int main (int argc, char ** argv)
 
     while (true) {
         // printf ("old: (%i %i) new: (%i %i)\n", oldpos.x, oldpos.y, pos.x, pos.y);
-        display.at (&primary_layer, oldpos).set (0, Glyph::PROPERTY_DEFAULT_COLOR_MASK);
-        display.at (&primary_layer, pos).set (1, Glyph::PROPERTIES_NONE);
+        display.at (&primary_layer, oldpos).set (' ', Glyph::PROPERTY_DEFAULT_COLOR_MASK);
+        display.at (&primary_layer, pos).set ('@', Glyph::PROPERTIES_NONE);
         display.needs_update (&primary_layer, oldpos);
         display.needs_update (&primary_layer, pos);
 

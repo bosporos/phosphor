@@ -13,27 +13,44 @@
 #include <Pewter/Glyph>
 #include <Pewter/Input>
 #include <Pewter/Engines/TTY/TTY>
+#include <Pewter/Input>
+
+#include <STB/Logging>
+
+#include <queue>
 
 namespace STB {
-    pewter::engine::tty::TTYGlyphMapping glyph_mapping;
+    extern pewter::engine::tty::TTY * tty;
+    extern pewter::engine::tty::TTYRenderer * tty_renderer;
+
+    typedef vnz::math::_i64 MenuChoice;
 
     struct Menu
     {
         struct Item
         {
             const char * item_label;
+            const MenuChoice item_choice;
+            const char item_selector;
+            const bool item_enabled;
         };
 
+        const char * menu_title;
         std::vector<Item> menu_items;
+
+        Menu (const char *);
+        Menu & item (const char *, MenuChoice, char = ' ', bool = true);
     };
 
     struct MenuUI
     {
         pewter::Layer menu_layer;
+        pewter::Display & display;
 
+        MenuUI (pewter::Rect<pewter::DisplayCoord>, pewter::Display &);
         void ui_sizechange (pewter::Rect<pewter::DisplayCoord>);
 
-        vnz::math::_usize ui_menu (Menu);
+        MenuChoice ui_menu (Menu);
     };
 
     struct Notice

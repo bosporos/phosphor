@@ -74,6 +74,8 @@ namespace pewter {
         LayerIndex order;
 
         Layer (Rect<DisplayCoord>);
+
+        void clear (Glyph);
     };
 
     struct Display
@@ -98,6 +100,7 @@ namespace pewter {
         Glyph & at (Layer *, Point<DisplayCoord>);
         Glyph & at (Layer *, DisplayCoord, DisplayCoord);
         void needs_update (Layer *, Point<DisplayCoord>);
+        void needs_update (Layer *, DisplayCoord, DisplayCoord);
     };
 
     struct Renderer
