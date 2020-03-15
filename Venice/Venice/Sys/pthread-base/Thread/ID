@@ -22,8 +22,8 @@ namespace vnz::sys::thread {
         //! Binds to new thread
         ID (ID &&);
 
-        void bind_to_current ();
-        bool is_current () const;
+        void bind_to_current_thread ();
+        bool is_current_thread () const;
 
         bool operator== (ID const & rhs) const;
     };

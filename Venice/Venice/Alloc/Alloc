@@ -8,137 +8,66 @@
 #ifndef __VNZ_ALLOC
 #define __VNZ_ALLOC
 
-#include <Venice/Compiler>
-#include <Venice/Sys/Sync/Mutex>
-#include <Venice/Sys/Thread/ID>
-
-#include <stdint.h>
-#include <stdio.h>
-
-#define __VNZA_DEBUG
+#include <Venice/Math/Integers>
 
 namespace vnz::alloc {
-    enum DebugSignaling : uint64_t {
-        VNZA_DBG_SIGNAL_NONE                   = 0,
-        VNZA_DBG_SIGNAL_DESTRUCTION_ORDER      = 1 << 0,
-        VNZA_DBG_SIGNAL_ALLOCATION_BRANCHING   = 1 << 1,
-        VNZA_DBG_SIGNAL_DEALLOCATION_BRANCHING = 1 << 2,
-        VNZA_DBG_SIGNAL_CHUNK_LAYOUT           = 1 << 3,
-        VNZA_DBG_SIGNAL_LINKAGE_CHANGES        = 1 << 4,
-        VNZA_DBG_SIGNAL_BAD_DEALLOC            = 1 << 5,
-        VNZA_DBG_SIGNAL_REASSIGNMENT           = 1 << 6,
-    };
-    extern DebugSignaling _vnza_debug_state;
-
-#ifdef __VNZA_DEBUG
-#    if COMPILER(CLANG)
-#        define vnza_debug_println(fmt, ...) fprintf (stderr, fmt "\n", __VA_OPT__)
-#    else
-#        define vnza_debug_println(fmt, ...) fprintf (stderr, fmt "\n", ##__VA_ARGS__)
-#    endif
-#else
-#    define vnza_debug_println(...)
-#endif
-
-    enum InvocationResult {
-        IR_OK,
-        IR_FAIL,
-    };
-
-    struct Block;
-
-    typedef InvocationResult (*InformsOfBlockFn) (void *, Block *);
-    typedef InvocationResult (*InformsOfBlockRequestFn) (void *, uint16_t, Block **);
-    typedef bool (*QueryParentPossessionFn) ();
-
-    struct HeapHusk;
-
-    struct LinkageHusk
+    struct Slab
     {
-        InformsOfBlockFn block_cache;
-        InformsOfBlockFn empty_alert;
-        InformsOfBlockFn empty_enough_alert;
+        void * memory;
+        usize size;
+        usize align;
 
-        InformsOfBlockRequestFn block_request_alert;
+        Slab (usize _size, usize _align);
+        ~Slab ();
 
-        HeapHusk * parent;
+        void * byte_offset (usize _offset);
+        usize offset_align_ceil (usize _offset, usize _align);
     };
 
-    struct HeapHusk
+    struct RegionAllocator
     {
-        InformsOfBlockFn linkage_surplus_alert;
-        InformsOfBlockFn linkage_evacuation_alert;
-        InformsOfBlockRequestFn linkage_block_request_alert;
+        Slab slab;
+        usize mark = 0;
 
-        InformsOfBlockFn heap_surplus_alert;
-        InformsOfBlockFn heap_evacuation_alert;
-        InformsOfBlockRequestFn heap_block_request_alert;
+        RegionAllocator (usize _size, usize _align);
+        ~RegionAllocator ();
 
-        HeapHusk * parent;
+        void * allocate_aligned (usize _osize, usize _oalign);
+
+        template <class T>
+        T * allocate (usize _oalign = 0)
+        {
+            if (!_oalign)
+                _oalign = alignof (T);
+            return allocate_aligned (sizeof (T), _oalign);
+        }
     };
 
-    enum BlockState {
-        Active,
-        Inactive,
-    };
-
-    struct Block
+    struct RCRegionAllocator
     {
-        // The beginning of the Block's memory range.
-        // This is a 4KiB range, so make sure to keep that in mind.
-        void * range_begin;
-        // The block's local free pointer
-        // Valid states:
-        //      range_begin <= freeptr_local < range_begin + 0x4000
-        //              signals that the local free list has available objects
-        //      freeptr_local == nullptr
-        //              signals that the local free list has been exhausted
-        void * freeptr_local;
-        // The block's global free pointer
-        // Valid states:
-        //      range_begin <= freeptr_global < range_begin + 0x4000
-        //              signals that the global free list has available objects
-        //      freeptr_global == nullptr
-        //              signals that the global free list has been exhausted
-        // The global free pointer SHALL NOT be accessed without first locking ``globalfree_lock''
-        void * freeptr_global;
+        union {
+            // Unionize to enable explicit construction/destruction
+            Slab slab;
+        };
+        usize mark              = 0;
+        usize extant_references = 0;
 
-        // The size of the objects
-        uint16_t object_size;
-        // The number of objects in the Block
-        uint16_t object_count;
-        // ``allocation_count'' is an approximation of the number of objects remaining
-        // unallocated in the Block. It will never underreport the number of available
-        // objects.
-        /* __atomic */ uint16_t allocation_count;
+        RCRegionAllocator (usize _size, usize _align);
+        ~RCRegionAllocator ();
 
-        // activation_state SHALL NOT be modified without ``globalfree_lock'' being
-        // in a locked state (owned by the modifying thread) for the duration of any
-        // modifications performed.
-        /* __atomic */ BlockState activation_state;
+        void * allocate_aligned (usize _osize, usize _oalign);
 
-        UNUSED uint8_t __padding0;
+        template <class T>
+        T * allocate (usize _oalign = 0)
+        {
+            if (!_oalign)
+                _oalign = alignof (T);
+            return allocate_aligned (sizeof (T), _oalign);
+        }
 
-        sys::thread::ID bound_thread_id;
-        sys::sync::Mutex globalfree_lock;
+        void deallocate ();
 
-        // SHALL NOT be modified without ``globalfree_lock'' being in a locked state.
-        /* __atomic */ LinkageHusk * linkage_husk;
-
-        Block * left;
-        Block * right;
-
-        Block (void * memory);
-        ~Block ();
-
-        InvocationResult allocate_object (void ** object);
-        InvocationResult __allocate_object_internal (void ** object);
-        InvocationResult deallocate_object (void * object);
-
-        InvocationResult format (uint16_t object_size);
-        InvocationResult reassign ();
-
-        void link_excise ();
+        void free_region ();
     };
 }
 

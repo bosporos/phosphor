@@ -1,0 +1,75 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien Angelo M. Cura
+//
+
+#ifndef __VNZ_ALLOC_NOVA
+#define __VNZ_ALLOC_NOVA
+
+#include <Venice/Math/Integers>
+#include <Venice/Alloc/Alloc>
+#include <Venice/Alloc/Internal>
+
+#include <Venice/Sys/Sync/Mutex>
+#include <Venice/Sys/Thread/ID>
+
+#include <Venice/Compiler>
+
+#if !VZNOVA_CHUNK_SIZE
+#    define VZNOVA_CHUNK_SIZE 0x1000000
+#endif
+#if !VZNOVA_SMOBJPOOL_SIZE
+#    define VZNOVA_SMOBJPOOL_SIZE 0x4000
+#endif
+
+#define VZNOVA_CHECK_DEALLOCATIONS 1
+
+namespace vnz::nova {
+    struct NChunk
+    {
+        NChunk * next_chunk;
+
+        static NChunk * New ();
+
+        NChunk ()               = delete;
+        NChunk (NChunk const &) = delete;
+        NChunk (NChunk &&)      = delete;
+        NChunk & operator= (NChunk const &) = delete;
+        NChunk & operator= (NChunk &&) = delete;
+        ~NChunk ();
+    };
+
+    enum NIR {
+        NIR_OK   = 0,
+        NIR_FAIL = 1,
+    };
+
+    struct NBHInterface;
+
+    struct NBlock
+    {
+        void * inner;
+        void * free_local  = nullptr;
+        void * free_global = nullptr;
+
+        u64 osize  = 0;
+        u64 ocount = 0;
+        i64 acount = 0;
+
+        NBlock * left        = nullptr;
+        NBlock * right       = nullptr;
+        NBHInterface * upper = nullptr;
+
+        sys::sync::Mutex fgm;
+        sys::thread::ID owner;
+    };
+
+    struct NBHInterface
+    {
+        NBlock * active;
+    };
+}
+
+#endif /* !@__VNZ_ALLOC_NOVA */

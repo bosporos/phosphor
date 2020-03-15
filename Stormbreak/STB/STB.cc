@@ -30,11 +30,13 @@ int main (int argc, char ** argv)
     stb_renderer.init ();
 
     Display stb_display (stb_renderer.current_size);
-    Layer stb_game_layer (stb_display.box);
 
-    STB::MenuUI menu_ui ({ 60, 0, 20, 24 }, stb_display);
+    Layer stb_game_layer (stb_display.box);
+    STB::MenuUI menu_ui ({ 40, 0, 40, 24 }, stb_display);
+    STB::NoticeUI notice_ui (stb_display);
 
     stb_display.layers.push_back (&menu_ui.menu_layer);
+    stb_display.layers.push_back (&notice_ui.notice_layer);
     stb_display.layers.push_back (&stb_game_layer);
 
     // layer 0 = highest priority
@@ -42,7 +44,7 @@ int main (int argc, char ** argv)
     // stb_display.layer_order.push_back (&menu_ui.menu_layer);
     // stb_display.layer_order.push_back (&stb_game_layer);
 
-    stb_display.mask_layer (&menu_ui.menu_layer, true);
+    // stb_display.mask_layer (&menu_ui.menu_layer, true);
     stb_display.mask_layer (&stb_game_layer, true);
 
     // for (int i = 0; i < (stb_game_layer.box.size.x * stb_game_layer.box.size.y); i++) {
@@ -66,21 +68,21 @@ int main (int argc, char ** argv)
 
     STB::Menu my_menu ("My first menu!");
     my_menu
-        .item ("Item 1", 1)
-        .item ("Item 2", 2)
-        .item ("Item 3", 3)
-        .item ("Item 4", 4)
-        .item ("Item 5", 5)
-        .item ("Item 6", 6)
-        .item ("Item 7", 7)
-        .item ("Item 8", 8)
-        .item ("Item 9", 9)
-        .item ("Item 10", 10)
-        .item ("Item 11", 11)
-        .item ("Item 12", 12)
-        .item ("Item 13", 13)
-        .item ("Item 14", 14)
-        .item ("Item 15", 15)
+        .item ("Item 1 Is An Extremely, Extremely, Extremely Long Menu Item", 1)
+        .item ("Item 2  Is An Extremely, Extremely, Extremely Long Menu Item", 2)
+        .item ("Item 3 Is An Extremely, Extremely, Extremely Long Menu Item", 3)
+        .item ("Item 4 Is An Extremely, Extremely, Extremely Long Menu Item", 4)
+        .item ("Item 5 Is An Extremely, Extremely, Extremely Long Menu Item", 5)
+        .item ("Item 6 Is An Extremely, Extremely, Extremely Long Menu Item", 6)
+        .item ("Item 7 Is An Extremely, Extremely, Extremely Long Menu Item", 7)
+        .item ("Item 8 Is An Extremely, Extremely, Extremely Long Menu Item", 8)
+        .item ("Item 9 Is An Extremely, Extremely, Extremely Long Menu Item", 9)
+        .item ("Item 10 Is An Extremely, Extremely, Extremely Long Menu Item", 10)
+        .item ("Item 11 Is An Extremely, Extremely, Extremely Long Menu Item", 11)
+        .item ("Item 12 Is An Extremely, Extremely, Extremely Long Menu Item", 12)
+        .item ("Item 13 Is An Extremely, Extremely, Extremely Long Menu Item", 13)
+        .item ("Item 14 Is An Extremely, Extremely, Extremely Long Menu Item", 14)
+        .item ("Item 15 Is An Extremely, Extremely, Extremely Long Menu Item", 15)
         .item ("Item 16", 16)
         .item ("Item 17", 17)
         .item ("Item 18", 18)

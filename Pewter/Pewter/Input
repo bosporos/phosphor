@@ -23,6 +23,7 @@ namespace pewter {
         VkCtlI        = 9,
         VkTab         = VkCtlI,   // '\t'
         VkCtlJ        = 10,   // '\n'
+        VkReturn      = 10,
         VkCtlK        = 11,
         VkCtlL        = 12,
         VkCtlM        = 13,   // '\r'

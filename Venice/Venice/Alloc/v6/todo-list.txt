@@ -1,3 +1,0 @@
-state_change_responder needs to *ALWAYS* have the appropriate linkage in it.
-    unless it's in RRLU/LRL
-aight, so only bit left here is state_change_responder in evacuating blocks

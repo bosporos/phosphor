@@ -24,6 +24,12 @@ namespace STB {
     extern pewter::engine::tty::TTYRenderer * tty_renderer;
 
     typedef vnz::math::_i64 MenuChoice;
+    enum class YNQ {
+        Yes,
+        No,
+        Quit,
+        NoDefault,
+    };
 
     struct Menu
     {
@@ -53,44 +59,27 @@ namespace STB {
         MenuChoice ui_menu (Menu);
     };
 
-    struct Notice
-    {
-        const char * notice_string;
-    };
-
-    struct NoticeHistory
-    {
-        std::deque<Notice> history;
-        Logger logger;
-
-        NoticeHistory (const char * backing_file);
-        // Save all remaining notices to the backing file
-        ~NoticeHistory ();
-
-        void push_notice (Notice notice);
-        void pop_notice_to_backing_file ();
-    };
-
-    struct NoticeQueue
-    {
-        std::queue<Notice> notices;
-        vnz::math::_usize notice_index;
-
-        void clear_queue ();
-        const char * pull_characters (vnz::math::_usize);
-    };
-
     struct NoticeUI
     {
+        pewter::Display & display;
         pewter::Layer notice_layer;
 
-        NoticeQueue notice_queue;
-        NoticeHistory notice_history;
-
+        NoticeUI (pewter::Display &);
         void ui_sizechange (pewter::Rect<pewter::DisplayCoord>);
-        void ui_display_as_line ();
-        void ui_display_as_pane ();
+
+        void notice (const char *, bool = true);
+        YNQ prompt_choice (const char *, YNQ = YNQ::NoDefault, bool = false);
     };
+
+    void place_on_layer (
+        pewter::Display & display,
+        pewter::Layer & layer,
+        pewter::DisplayCoord x,
+        const pewter::DisplayCoord y,
+        const pewter::GlyphInternal * seq,
+        const vnz::math::_usize seqlen,
+        pewter::GlyphProperties gp,
+        pewter::Pair coloring);
 
     // no string input yet...
 }

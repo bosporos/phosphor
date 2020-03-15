@@ -3,4 +3,6 @@
 
 -std=c++2a
 -Wno-literal-suffix
+-Wno-user-defined-literals
+-Wno-unknown-warning-option
 -fconcepts

@@ -53,24 +53,11 @@ vnz_file("venice/sys/pthread-base/sync/rwlock.cc")
 vnz_file("venice/sys/pthread-base/thread/id.cc")
 
 vnz_file("venice/math/integers.cc")
-vnz_file("venice/math/floating.cc")
 
-vnz_file("venice/string/string.cc")
-vnz_file("venice/arch/x86-64/string/utility.s")
-
-vnz_file("venice/range/range.cc")
-
-# vnz_file("venice/alloc/gh.cc")
-# vnz_file("venice/alloc/rh.cc")
-# vnz_file("venice/alloc/lh.cc")
-# vnz_file("venice/alloc/rrls.cc")
-# vnz_file("venice/alloc/rrlu.cc")
-# vnz_file("venice/alloc/lal.cc")
-# vnz_file("venice/alloc/lrl.cc")
-# vnz_file("venice/alloc/block.cc")
-# vnz_file("venice/alloc/interface.cc")
-# vnz_file("venice/alloc/alloc.cc")
-# vnz_file("venice/alloc/alloc_routines.s")
+vnz_file("venice/alloc/alloc.cc")
+vnz_file("venice/alloc/internalallocations.cc")
+vnz_file("venice/alloc/internalsystemconfiguration.cc")
+vnz_file("venice/alloc/nova.cc")
 
 # LIBRARIES
 

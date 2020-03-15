@@ -1,0 +1,56 @@
+The following operations exist:
+
+    client requests that some amount of memory be allocated (client_informs_of_allocation_request)
+    client requests that some amount of memory be freed (client_informs_of_deallocation_request)
+
+client_informs_of_deallocation_request(void* object)
+    1. invokes __nova_find_block_header_for_object(void*, NBlk**)
+        NIR_FAIL -> panic!
+    2. invoke client_informs_block_of_deallocation_request(NBlk*, void*) -> !
+
+client_informs_block_of_deallocation_request(NBlk*, void*) -> NIR
+    1. deallocate
+    2. at::dealloc_64 acnt
+        != 0 -> return NIR_OK
+    3. 
+
+client_informs_of_allocation_request(u64) -> Result<void *, AllocationError>
+    1. invokes __nova_get_local_heap(Heap**)
+    2. if the object size is not Small, then an AllocationError is returned
+    3. invokes client_informs_local_heap_of_allocation_request(Heap*, u64, void**)
+
+client_informs_local_heap_of_allocation_request(NHeap*, u64, void**) -> NIR
+    1. invokes __nova_get_chain_for_size(u64)
+    2. invokes local_heap_informs_linkage_of_allocation_request(NLkg *, NHeap*, u64, void**)
+        NIR_OK -> returns value
+        NIR_FAIL -> returns nullptr
+
+local_heap_informs_linkage_of_allocation_request(NLkg*, NHeap*, u64, void**) -> NIR
+    1. if the linkage has no active block, invoke linkage_informs_local_heap_of_block_request(NHeap *, u64, NBlock**)
+        after the invocation occurs, the block must be acclimatized:
+            . FGL must be unlocked
+            . the owner must be updated
+        then it must be placed as the head:
+            . LKL must be locked
+            . HD must be pointed to the block
+            . LKL must be unlocked
+    2. invoke linkage_informs_block_of_allocation_request(NBlk*, void**)
+        NIR_OK -> returns value
+    3. shift the active block
+        . LKL must be locked
+        . HD must be queried
+        . HD will be set to HD.blr if non-null
+            HD.blr != null -> goto 5
+    4. invoke linkage_informs_block_of_allocation_request(NBlk*, void**)
+        NIR_OK -> return value
+        NIR_FAIL -> ! IMPOSSIBLE
+    5. invoke linkage_informs_local_heap_of_block_request(NHeap*, u64, NBlock**)
+        NIR_FAIL -> nullptr
+    6. invoke linakge_informs_block_of_allocation_request(NBlk*, void**)
+        NIR_OK -> return value
+        NIR_FAIL -> nullptr
+
+linkage_informs_local_heap_of_block_request(NHeap*, u64, NBlock**)
+    1. invoke heap_informs_ulinkage_of_block_request(NLkg*, NBlock**)
+        NIR_OK -> return value
+    2. invoke

@@ -12,7 +12,9 @@
     }
 
 // A quick note:
-// Pointer literals are uptr/iptr instead of up/ip (which would seem to better follow convention) in order to preserve the 'ip' literal for future use for networking purposes (i.e. ip addresses)
+// Pointer literals are uptr/iptr instead of up/ip (which would seem to better
+// follow convention) in order to preserve the 'ip' literal for future use for
+// networking purposes (i.e. ip addresses)
 
 vnz_defintop_lit (u8, u8);
 vnz_defintop_lit (u16, u16);

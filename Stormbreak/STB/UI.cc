@@ -13,6 +13,40 @@ using namespace STB;
 using namespace pewter;
 using namespace vnz::math;
 
+MenuChoice menu_make_choice (std::map<char, MenuChoice> & map)
+{
+    while (true) {
+        Key k = tty->read ();
+        if (k == VkEscape) {
+            return -1;
+        } else if (k == VkSpace) {
+            return -2;
+        } else {
+            if (map.contains ((char)k)) {
+                return map[(char)k];
+            } else {
+                tty->bell ();
+            }
+        }
+    }
+}
+
+void STB::place_on_layer (
+    Display & display,
+    Layer & layer,
+    DisplayCoord x,
+    const DisplayCoord y,
+    const GlyphInternal * seq,
+    const _usize seqlen,
+    GlyphProperties gp,
+    Pair coloring)
+{
+    for (_u64 i = 0; i < seqlen; i++) {
+        display.at (&layer, x, y).set (seq[i], coloring, gp);
+        display.needs_update (&layer, x++, y);
+    }
+}
+
 Menu::Menu (const char * _mttl)
     : menu_title { _mttl }
 {}
@@ -34,40 +68,6 @@ void MenuUI::ui_sizechange (Rect<DisplayCoord> _new_box)
     menu_layer.box = _new_box;
     menu_layer.layer_glyph_buffer.resize (_new_box);
     menu_layer.layer_mask_buffer.resize (_new_box);
-}
-
-MenuChoice make_choice (std::map<char, MenuChoice> & map)
-{
-    while (true) {
-        Key k = tty->read ();
-        if (k == VkEscape) {
-            return -1;
-        } else if (k == VkSpace) {
-            return -2;
-        } else {
-            if (map.contains ((char)k)) {
-                return map[(char)k];
-            } else {
-                tty->bell ();
-            }
-        }
-    }
-}
-
-void place_on_layer (
-    Display & display,
-    Layer & layer,
-    DisplayCoord x,
-    const DisplayCoord y,
-    const GlyphInternal * seq,
-    const _usize seqlen,
-    GlyphProperties gp,
-    Pair coloring)
-{
-    for (_u64 i = 0; i < seqlen; i++) {
-        display.at (&layer, x, y).set (seq[i], coloring, gp);
-        display.needs_update (&layer, x++, y);
-    }
 }
 
 MenuChoice MenuUI::ui_menu (Menu menu)
@@ -97,7 +97,7 @@ MenuChoice MenuUI::ui_menu (Menu menu)
             if (displayed_char == 'z' + 1)
                 displayed_char = 'A';
             if (displayed_char == 'Z' + 1) {
-                MenuChoice m_choice = make_choice (available_choices);
+                MenuChoice m_choice = menu_make_choice (available_choices);
                 if (m_choice == -2) {
                     // keep going
                     menu_layer.clear (' ');
@@ -119,12 +119,14 @@ MenuChoice MenuUI::ui_menu (Menu menu)
         if ((y + ncalc_y) >= max_lines - 1 && i < nli - 1) {
             place_on_layer (display, menu_layer, menu_layer.box.origin.x, menu_layer.box.origin.y + y, "--MORE--", 8, Glyph::PROPERTY_DEFAULT_COLOR_MASK, Pair (255, 255, 255, 0, 0, 0));
             tty_renderer->render_full (&display);
-            MenuChoice m_choice = make_choice (available_choices);
+            MenuChoice m_choice = menu_make_choice (available_choices);
             if (m_choice == -2) {
                 menu_layer.clear (' ');
                 y = 0;
                 available_choices.clear ();
                 displayed_char = 'a';
+                if (item.item_selector == ' ')
+                    __operative_selector = displayed_char++;
                 place_on_layer (display,
                                 menu_layer,
                                 menu_layer.box.origin.x,
@@ -154,9 +156,10 @@ MenuChoice MenuUI::ui_menu (Menu menu)
                             Glyph::PROPERTY_DEFAULT_COLOR_MASK,
                             Pair (255, 255, 255, 0, 0, 0));
         }
+        available_choices[__operative_selector] = item.item_choice;
     }
     tty_renderer->render_full (&display);
-    MenuChoice m_choice = make_choice (available_choices);
+    MenuChoice m_choice = menu_make_choice (available_choices);
 
     if (m_choice == -2)
         m_choice = -1;
@@ -165,4 +168,74 @@ MenuChoice MenuUI::ui_menu (Menu menu)
     tty_renderer->render_full (&display);
 
     return m_choice;
+}
+
+NoticeUI::NoticeUI (Display & _display)
+    : display { _display }
+    , notice_layer ({ 0, 0, _display.box.size.x, _display.box.size.y })
+// , notice_line (_display.box.size.x, ' ');
+{}
+
+void NoticeUI::ui_sizechange (Rect<DisplayCoord> _new_box)
+{
+    notice_layer.box = _new_box;
+    notice_layer.layer_glyph_buffer.resize (_new_box);
+    notice_layer.layer_mask_buffer.resize (_new_box);
+    // notice_line.resize (_new_box.size.x, ' ');
+}
+
+void NoticeUI::notice (const char * _notice, bool _read)
+{
+    const DisplayCoord nlen = strlen (_notice);
+    for (int i = 0; i < nlen; i++) {
+        notice_layer.layer_glyph_buffer[i].set (_notice[i]);
+        notice_layer.layer_mask_buffer[i] = true;
+    }
+
+    memset (&notice_layer.layer_mask_buffer.inner, false, sizeof (bool) * nlen);
+
+    if (_read)
+        tty->read ();
+}
+
+YNQ NoticeUI::prompt_choice (const char * _prompt, YNQ _default, bool _allow_quit)
+{
+    notice (_prompt, false);
+    if (_allow_quit)
+        notice (" [ynq] ", false);
+    else
+        notice (" [yn] ", false);
+    switch (_default) {
+        case YNQ::Yes: notice ("(y) "); break;
+        case YNQ::No: notice ("(n) "); break;
+        case YNQ::Quit: notice ("(q) "); break;
+        default:
+            break;
+    }
+
+    Key k;
+    while (true) {
+        k = tty->read ();
+        switch (k) {
+            case VkReturn:
+                if (_default != YNQ::NoDefault)
+                    return _default;
+                break;
+            case VkLowerY:
+            case VkUpperY:
+                return YNQ::Yes;
+            case VkLowerN:
+            case VkUpperN:
+                return YNQ::No;
+            case VkLowerQ:
+            case VkUpperQ:
+            case VkEscape:
+                if (_allow_quit)
+                    return YNQ::Quit;
+                break;
+            default:
+                break;
+        }
+        tty->bell ();
+    }
 }

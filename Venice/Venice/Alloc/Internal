@@ -1,0 +1,42 @@
+// -*- mode: c++ -*-
+
+//
+// project venice
+// author Maximilien M. Cura
+//
+
+#ifndef __VNZ_ALLOC_INTERNAL
+#define __VNZ_ALLOC_INTERNAL
+
+#include <Venice/Math/Integers>
+
+namespace vnz::alloc {
+    namespace internal {
+        //! Get the (current) pagesize of the system.
+        //!
+        //! Returns nonzero pagesize if successful, zero otherwise.
+        usize get_pagesize ();
+
+        //! Get total size (in bytes) of physical RAM configured on the system.
+        //!
+        //! Returns nonzero size of physical RAM if successful, zero otherwise.
+        usize get_physical_memory_size ();
+
+        //! Get number of currently available logical cores on the system.
+        //!
+        //! On Linux, this is an expensive call, and the result should be cached
+        //! whenever possible. Not sure about other systems.
+        //!
+        //! Returns nonzero number of available (online) logical cores, or zero
+        //! otherwise.
+        usize get_number_of_cores ();
+
+        void * allocate_contiguous_pages (usize _number);
+        void * allocate_contiguous_aligned (usize _size, usize _align);
+
+        void free_contiguous_pages (void * _memory, usize _size);
+        void free_contiguous_memory (void * _memory, usize _size);
+    }
+}
+
+#endif /* !@__VNZ_ALLOC_INTERNAL */

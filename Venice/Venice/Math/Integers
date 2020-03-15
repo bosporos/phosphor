@@ -9,6 +9,7 @@
 #define __VNZ_MATH_INTEGERS
 
 #include <Venice/Compiler>
+#include <Venice/Lang/Conditional>
 
 #if COMPILER_SUPPORTS(SIZED_INT_MACROS)
 namespace vnz::math {
@@ -25,7 +26,7 @@ namespace vnz::math {
     typedef __INT64_TYPE__ _i64;
     typedef __INTPTR_TYPE__ _iptr;
     typedef __INTPTR_TYPE__ _isize;
-}
+}   // namespace vnz::math
 #endif /* COMPILER+SIZED_INT_MACROS */
 
 namespace vnz {
@@ -52,13 +53,12 @@ namespace vnz {
 
     template <class T>
     concept Signed = _Signed<T>::__constraint;
-}
+}   // namespace vnz
 
 namespace vnz::math {
     template <class T>
     struct Integer
-    {
-    };
+    { };
 
 #define vnz_defintop_nm(op)                           \
     SelfType operator op (SelfType const rhs) const   \
@@ -69,7 +69,7 @@ namespace vnz::math {
     SelfType & operator op (SelfType const rhs) \
     {                                           \
         this->inner op rhs.inner;               \
-        return *this;                           \
+        return *static_cast<SelfType *> (this); \
     }
 #define vnz_defintop_nm_bt(op)                        \
     SelfType operator op (Integer<T> const rhs) const \
@@ -80,7 +80,7 @@ namespace vnz::math {
     SelfType & operator op (Integer<T> const rhs) const \
     {                                                   \
         this->inner op rhs.inner;                       \
-        return *this;                                   \
+        return *static_cast<SelfType *> (this);         \
     }
 
     template <template <class T> class I, class T>
@@ -95,13 +95,13 @@ namespace vnz::math {
 
         ALWAYS_INLINE IntegerBase ()
             : inner { 0 }
-        {}
+        { }
         ALWAYS_INLINE IntegerBase (T x)
             : inner { x }
-        {}
+        { }
         ALWAYS_INLINE IntegerBase (I<T> const & x)
             : inner { x.inner }
-        {}
+        { }
 
         ALWAYS_INLINE operator UnderlyingType () const
         {
@@ -117,23 +117,23 @@ namespace vnz::math {
         SelfType & operator= (I<T> x)
         {
             this->inner = x.inner;
-            return *this;
+            return *static_cast<SelfType *> (this);
         }
         SelfType & operator= (T x)
         {
             this->inner = x;
-            return *this;
+            return *static_cast<SelfType *> (this);
         }
 
         SelfType & operator++ ()
         {
             ++this->inner;
-            return *this;
+            return *static_cast<SelfType *> (this);
         }
         SelfType & operator-- ()
         {
             --this->inner;
-            return *this;
+            return *static_cast<SelfType *> (this);
         }
 
         SelfType operator++ (int)
@@ -146,10 +146,7 @@ namespace vnz::math {
             this->inner--;
             return SelfType (this->inner + 1);
         }
-        ALWAYS_INLINE bool operator! () const
-        {
-            return !this->inner;
-        }
+        ALWAYS_INLINE bool operator! () const { return !this->inner; }
 
         ALWAYS_INLINE explicit operator bool () const
         {
@@ -179,18 +176,9 @@ namespace vnz::math {
         ALWAYS_INLINE vnz_defintop_m_bt (>>=);
         ALWAYS_INLINE vnz_defintop_m_bt (<<=);
 
-        ALWAYS_INLINE SelfType operator+ ()
-        {
-            return SelfType { this->inner };
-        }
-        ALWAYS_INLINE SelfType operator- ()
-        {
-            return SelfType { -this->inner };
-        }
-        ALWAYS_INLINE SelfType operator~ ()
-        {
-            return SelfType { ~this->inner };
-        }
+        ALWAYS_INLINE SelfType operator+ () { return SelfType { this->inner }; }
+        ALWAYS_INLINE SelfType operator- () { return SelfType { -this->inner }; }
+        ALWAYS_INLINE SelfType operator~ () { return SelfType { ~this->inner }; }
     };
 
     template <vnz::Unsigned T>
@@ -198,6 +186,8 @@ namespace vnz::math {
     {
         typedef T UnderlyingType;
         typedef Integer<T> SelfType;
+
+        using IntegerBase<Integer, T>::IntegerBase;
 
         static constexpr const _usize width = sizeof (T);
 
@@ -217,22 +207,25 @@ namespace vnz::math {
         typedef T UnderlyingType;
         typedef Integer<T> SelfType;
 
+        using IntegerBase<Integer, T>::IntegerBase;
+
         static constexpr const _usize width = sizeof (T);
 
         ALWAYS_INLINE constexpr const SelfType max_value () const
         {
-            return {
-                ~(static_cast<UnderlyingType> (1) << (SelfType::width - 1))
-            };
+            return { ~(static_cast<UnderlyingType> (1) << (SelfType::width - 1)) };
         }
         ALWAYS_INLINE constexpr const SelfType min_value () const
         {
-            // Gotta base min on max b/c |min| = |max| + 1 because 2's complement means that you get a range of 2^N values; leave room for the 0, and you get 2^N-1, so one of your endpoints is going to have an absolute value 1 greater than the other
-            // Easier to do this on the min_value because the max is smaller than the min so overflowing isn't a problem
+            // Gotta base min on max b/c |min| = |max| + 1 because 2's complement means
+            // that you get a range of 2^N values; leave room for the 0, and you get
+            // 2^N-1, so one of your endpoints is going to have an absolute value 1
+            // greater than the other Easier to do this on the min_value because the max
+            // is smaller than the min so overflowing isn't a problem
             return { -SelfType::max_value () - 1 };
         }
     };
-}
+}   // namespace vnz::math
 
 namespace vnz {
     using u8    = math::Integer<math::_u8>;
@@ -248,9 +241,10 @@ namespace vnz {
     using i64   = math::Integer<math::_i64>;
     using isize = math::Integer<math::_isize>;
     using iptr  = math::Integer<math::_iptr>;
-}
+}   // namespace vnz
 
-#define vnz_declintop_lit(type, bang) vnz::type operator"" bang (unsigned long long i);
+#define vnz_declintop_lit(type, bang) \
+    vnz::type operator"" bang (unsigned long long i);
 
 vnz_declintop_lit (u8, u8);
 vnz_declintop_lit (u16, u16);

@@ -23,22 +23,22 @@ using ::vnz::sys::thread::ID;
 
 ID::ID ()
     : inner { $___vnz_thread_id___ }
-{}
+{ }
 
 ID::ID (ID const & id)
     : inner { id.inner }
-{}
+{ }
 
 ID::ID (UNUSED ID && id)
     : inner { $___vnz_thread_id___ }
-{}
+{ }
 
-void ID::bind_to_current ()
+void ID::bind_to_current_thread ()
 {
     this->inner = $___vnz_thread_id___;
 }
 
-bool ID::is_current () const
+bool ID::is_current_thread () const
 {
     return this->inner == $___vnz_thread_id___;
 }
